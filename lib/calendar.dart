@@ -14,7 +14,6 @@ class DateSelectionPage extends StatefulWidget {
 
 class _DateSelectionPageState extends State<DateSelectionPage> {
   DateTime? startDate;
-  DateTime? endDate;
   DateTime currentMonth = DateTime(DateTime.now().year, DateTime.now().month);
   final DateTime today = DateTime.now();
 
@@ -22,14 +21,7 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
     if (selectedDate.isAfter(today)) return;
 
     setState(() {
-      if (startDate == null || (startDate != null && endDate != null)) {
-        startDate = selectedDate;
-        endDate = null;
-      } else if (selectedDate.isBefore(startDate!)) {
-        startDate = selectedDate;
-      } else {
-        endDate = selectedDate;
-      }
+      startDate = selectedDate; // Only set start date
     });
   }
 
@@ -48,15 +40,7 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
   void _resetDates() {
     setState(() {
       startDate = null;
-      endDate = null;
     });
-  }
-
-  bool _isWithinRange(DateTime day) {
-    if (startDate != null && endDate != null) {
-      return day.isAfter(startDate!) && day.isBefore(endDate!);
-    }
-    return false;
   }
 
   @override
@@ -82,8 +66,6 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
           DateTime thisDay =
               DateTime(currentMonth.year, currentMonth.month, date);
           bool isStart = startDate != null && _isSameDay(thisDay, startDate!);
-          bool isEnd = endDate != null && _isSameDay(thisDay, endDate!);
-          bool inRange = _isWithinRange(thisDay);
           bool isFuture = thisDay.isAfter(today);
 
           Color bgColor = Colors.transparent;
@@ -92,11 +74,6 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
           if (isStart) {
             bgColor = Colors.green;
             textColor = Colors.white;
-          } else if (isEnd) {
-            bgColor = Colors.red;
-            textColor = Colors.white;
-          } else if (inRange) {
-            bgColor = Colors.green.withOpacity(0.3);
           }
 
           row.add(GestureDetector(
@@ -143,7 +120,7 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
                     Icon(Icons.arrow_back, color: Colors.white),
                     SizedBox(height: 10),
                     Text(
-                      "Select dates from which\nTransaction has to be shown",
+                      "Select a date for\nTransaction to be shown",
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -164,7 +141,7 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
                   padding:
                       const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Column(
                         children: [
@@ -173,17 +150,6 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
                           const SizedBox(height: 4),
                           Text(startDate != null
                               ? DateFormat("MMM d, yyyy").format(startDate!)
-                              : "Select"),
-                        ],
-                      ),
-                      const VerticalDivider(color: Colors.grey),
-                      Column(
-                        children: [
-                          const Text("End Date",
-                              style: TextStyle(color: Colors.grey)),
-                          const SizedBox(height: 4),
-                          Text(endDate != null
-                              ? DateFormat("MMM d, yyyy").format(endDate!)
                               : "Select"),
                         ],
                       ),
@@ -255,14 +221,16 @@ class _DateSelectionPageState extends State<DateSelectionPage> {
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        onPressed: () {
-                          if (startDate != null && endDate != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(
-                                  'Selected: ${DateFormat("MMM d").format(startDate!)} to ${DateFormat("MMM d").format(endDate!)}'),
-                            ));
-                          }
-                        },
+                        onPressed: startDate != null
+                            ? () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Selected: ${DateFormat("MMM d, yyyy").format(startDate!)}'),
+                                  ),
+                                );
+                              }
+                            : null,
                         child: const Text("Continue",
                             style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
