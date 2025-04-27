@@ -27,46 +27,24 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
       isLoading = true;
     });
     try {
-      // Debug marker to confirm this code is running
-      print('Running updated fetchDrivers method (no subquery) - Version 2');
+      print('Fetching drivers with areas...');
 
-      // Fetch all drivers
+      // Fetch drivers with their associated delivery area using area_id
       final driverResponse = await supabase
           .from('drivers')
-          .select('id, driver_name, vehicle_number')
+          .select(
+              'id, driver_name, vehicle_number, delivery_areas!area_id(area_name)')
           .order('driver_name', ascending: true);
 
-      print('Fetched drivers: $driverResponse');
-
-      // Fetch areas
-      final areaResponse =
-          await supabase.from('delivery_areas').select('driver_id, area_name');
-
-      print('Fetched areas: $areaResponse');
-
-      // Merge drivers with their areas
-      final driversWithAreas = driverResponse.map((driver) {
-        final area = areaResponse.firstWhere(
-          (area) => area['driver_id'] == driver['id'],
-          orElse: () => {'area_name': null},
-        );
-        return {
-          'id': driver['id'],
-          'driver_name': driver['driver_name'],
-          'vehicle_number': driver['vehicle_number'],
-          'area_name': area['area_name'],
-        };
-      }).toList();
-
-      print(
-          'Supabase drivers response (all drivers with areas): $driversWithAreas');
-      print('Number of drivers fetched: ${driversWithAreas.length}');
+      print('Fetched drivers with areas: $driverResponse');
 
       setState(() {
-        drivers = driversWithAreas;
-        filteredDrivers = List<Map<String, dynamic>>.from(driversWithAreas);
+        drivers = List<Map<String, dynamic>>.from(driverResponse);
+        filteredDrivers = List<Map<String, dynamic>>.from(driverResponse);
         isLoading = false;
       });
+
+      print('Number of drivers fetched: ${drivers.length}');
     } catch (e) {
       setState(() {
         drivers = [];
@@ -74,7 +52,7 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching all drivers: $e')),
+        SnackBar(content: Text('Error fetching drivers: $e')),
       );
     }
   }
@@ -86,7 +64,8 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
     setState(() {
       filteredDrivers = drivers.where((driver) {
         final name = driver['driver_name']?.toLowerCase() ?? '';
-        final area = driver['area_name']?.toLowerCase() ?? '';
+        final area =
+            driver['delivery_areas']?['area_name']?.toLowerCase() ?? '';
         print('Driver: ${driver['driver_name']}, Area: $area');
         return name.contains(lowerQuery) || area.contains(lowerQuery);
       }).toList();
@@ -95,7 +74,8 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
   }
 
   Widget buildDriverItem(Map<String, dynamic> driver) {
-    final areaName = driver['area_name'] ?? 'No area assigned';
+    final areaName =
+        driver['delivery_areas']?['area_name'] ?? 'No area assigned';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -156,7 +136,7 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
                       const SizedBox(height: 6),
                       Text(
                         areaName,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.black54,
                           fontSize: 14,
                           fontWeight: FontWeight.w400,

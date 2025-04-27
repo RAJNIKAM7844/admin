@@ -12,44 +12,16 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
   final supabase = Supabase.instance.client;
 
   List<Map<String, dynamic>> areas = [];
-  List<Map<String, dynamic>> drivers = [];
+  List<Map<String, dynamic>> driversPerArea = [];
   bool isLoading = false;
 
   final TextEditingController areaNameController = TextEditingController();
-  int? selectedDriverId;
   int? editingAreaId;
 
   @override
   void initState() {
     super.initState();
-    fetchDrivers();
     fetchAreas();
-  }
-
-  Future<void> fetchDrivers() async {
-    try {
-      final response = await supabase
-          .from('drivers')
-          .select('id, driver_name, vehicle_number')
-          .order('driver_name');
-
-      if (response != null && response is List) {
-        setState(() {
-          drivers = List<Map<String, dynamic>>.from(response);
-        });
-      } else {
-        setState(() {
-          drivers = [];
-        });
-      }
-    } catch (e) {
-      setState(() {
-        drivers = [];
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching drivers: $e')),
-      );
-    }
   }
 
   Future<void> fetchAreas() async {
@@ -58,25 +30,46 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
     });
 
     try {
-      final response = await supabase
+      // Fetch all areas
+      final areaResponse = await supabase
           .from('delivery_areas')
-          .select(
-              'id, area_name, driver_id, drivers(driver_name, vehicle_number)')
+          .select('id, area_name')
           .order('area_name');
 
-      if (response != null && response is List) {
+      if (areaResponse != null && areaResponse is List) {
+        final List<Map<String, dynamic>> fetchedAreas =
+            List<Map<String, dynamic>>.from(areaResponse);
+
+        // Fetch drivers for each area
+        final List<Map<String, dynamic>> driversList = [];
+        for (var area in fetchedAreas) {
+          final driversResponse = await supabase
+              .from('drivers')
+              .select('id, driver_name, vehicle_number')
+              .eq('area_id', area['id']);
+
+          driversList.add({
+            'area_id': area['id'],
+            'drivers': driversResponse,
+          });
+        }
+
         setState(() {
-          areas = List<Map<String, dynamic>>.from(response);
+          areas = fetchedAreas;
+          driversPerArea = driversList;
           isLoading = false;
         });
       } else {
         setState(() {
           areas = [];
+          driversPerArea = [];
           isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
+        areas = [];
+        driversPerArea = [];
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -85,11 +78,10 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
     }
   }
 
-  Future<void> addArea(String areaName, int driverId) async {
+  Future<void> addArea(String areaName) async {
     try {
       await supabase.from('delivery_areas').insert({
         'area_name': areaName,
-        'driver_id': driverId,
       });
       await fetchAreas();
     } catch (e) {
@@ -99,11 +91,11 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
     }
   }
 
-  Future<void> updateArea(int id, String areaName, int driverId) async {
+  Future<void> updateArea(int id, String areaName) async {
     try {
       await supabase
           .from('delivery_areas')
-          .update({'area_name': areaName, 'driver_id': driverId}).eq('id', id);
+          .update({'area_name': areaName}).eq('id', id);
       await fetchAreas();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -114,6 +106,18 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
 
   Future<void> deleteArea(int id) async {
     try {
+      // Check if any drivers are assigned to this area
+      final driversInArea =
+          await supabase.from('drivers').select('id').eq('area_id', id);
+
+      if (driversInArea.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Cannot delete area: Drivers are assigned to it')),
+        );
+        return;
+      }
+
       await supabase.from('delivery_areas').delete().eq('id', id);
       await fetchAreas();
     } catch (e) {
@@ -127,11 +131,9 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
     if (area != null) {
       editingAreaId = area['id'] as int?;
       areaNameController.text = area['area_name'] ?? '';
-      selectedDriverId = area['driver_id'] as int?;
     } else {
       editingAreaId = null;
       areaNameController.clear();
-      selectedDriverId = null;
     }
 
     showDialog(
@@ -145,24 +147,6 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
               controller: areaNameController,
               decoration: const InputDecoration(labelText: 'Area Name'),
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              value: selectedDriverId,
-              decoration: const InputDecoration(labelText: 'Assign Driver'),
-              items: drivers.map((driver) {
-                final driverName = driver['driver_name'] ?? '';
-                final vehicle = driver['vehicle_number'] ?? '';
-                return DropdownMenuItem<int>(
-                  value: driver['id'] as int,
-                  child: Text('$driverName - $vehicle'),
-                );
-              }).toList(),
-              onChanged: (val) {
-                setState(() {
-                  selectedDriverId = val;
-                });
-              },
-            ),
           ],
         ),
         actions: [
@@ -175,22 +159,26 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
           ElevatedButton(
             onPressed: () async {
               final areaName = areaNameController.text.trim();
-              final driverId = selectedDriverId;
 
-              if (areaName.isEmpty || driverId == null) {
+              if (areaName.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please fill all fields')),
+                  const SnackBar(content: Text('Please fill the area name')),
                 );
                 return;
               }
 
-              if (editingAreaId == null) {
-                await addArea(areaName, driverId);
-              } else {
-                await updateArea(editingAreaId!, areaName, driverId);
+              try {
+                if (editingAreaId == null) {
+                  await addArea(areaName);
+                } else {
+                  await updateArea(editingAreaId!, areaName);
+                }
+                Navigator.pop(context);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: $e')),
+                );
               }
-
-              Navigator.pop(context);
             },
             child: const Text('Save'),
           ),
@@ -222,19 +210,23 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
   }
 
   Widget buildAreaItem(Map<String, dynamic> area) {
-    final driverData = area['drivers'] as Map<String, dynamic>?;
+    // Find drivers assigned to this area
+    final areaDrivers = driversPerArea.firstWhere(
+      (d) => d['area_id'] == area['id'],
+      orElse: () => {'drivers': []},
+    )['drivers'] as List<dynamic>;
 
-    final driverName = driverData != null
-        ? driverData['driver_name'] ?? ''
-        : 'No driver assigned';
-    final vehicle =
-        driverData != null ? driverData['vehicle_number'] ?? '' : '';
+    final driverNames = areaDrivers.isNotEmpty
+        ? areaDrivers
+            .map((d) => '${d['driver_name']} - ${d['vehicle_number']}')
+            .join(', ')
+        : 'No drivers assigned';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ListTile(
         title: Text(area['area_name'] ?? ''),
-        subtitle: Text('Driver: $driverName - $vehicle'),
+        subtitle: Text('Drivers: $driverNames'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

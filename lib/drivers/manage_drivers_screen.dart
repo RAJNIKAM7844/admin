@@ -12,57 +12,103 @@ class _ManageDriversScreenState extends State<ManageDriversScreen> {
   final supabase = Supabase.instance.client;
 
   List<Map<String, dynamic>> drivers = [];
+  List<Map<String, dynamic>> deliveryAreas = [];
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    fetchDeliveryAreas();
     fetchDrivers();
+  }
+
+  Future<void> fetchDeliveryAreas() async {
+    try {
+      final response = await supabase
+          .from('delivery_areas')
+          .select('id, area_name')
+          .order('area_name', ascending: true);
+      setState(() {
+        deliveryAreas = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching delivery areas: $e')),
+      );
+    }
   }
 
   Future<void> fetchDrivers() async {
     setState(() {
       isLoading = true;
     });
-    final response = await supabase
-        .from('drivers')
-        .select()
-        .order('driver_name', ascending: true) as List<dynamic>?;
+    try {
+      final response = await supabase
+          .from('drivers')
+          .select(
+              'id, driver_name, vehicle_number, username, area_id, delivery_areas!area_id(area_name)')
+          .order('driver_name', ascending: true);
 
-    if (response != null) {
       setState(() {
         drivers = List<Map<String, dynamic>>.from(response);
         isLoading = false;
       });
-    } else {
+    } catch (e) {
       setState(() {
         drivers = [];
         isLoading = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching drivers: $e')),
+      );
     }
   }
 
-  Future<void> addDriver(String name, String vehicle) async {
-    final response = await supabase.from('drivers').insert({
-      'driver_name': name,
-      'vehicle_number': vehicle,
-    });
-
-    fetchDrivers();
+  Future<void> addDriver(String name, String vehicle, String username,
+      String password, int areaId) async {
+    try {
+      await supabase.from('drivers').insert({
+        'driver_name': name,
+        'vehicle_number': vehicle,
+        'username': username,
+        'password': password,
+        'area_id': areaId,
+      });
+      fetchDrivers();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error adding driver: $e')),
+      );
+    }
   }
 
-  Future<void> updateDriver(int id, String name, String vehicle) async {
-    await supabase.from('drivers').update({
-      'driver_name': name,
-      'vehicle_number': vehicle,
-    }).eq('id', id);
-
-    fetchDrivers();
+  Future<void> updateDriver(int id, String name, String vehicle,
+      String username, String password, int areaId) async {
+    try {
+      await supabase.from('drivers').update({
+        'driver_name': name,
+        'vehicle_number': vehicle,
+        'username': username,
+        'password': password,
+        'area_id': areaId,
+      }).eq('id', id);
+      fetchDrivers();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating driver: $e')),
+      );
+    }
   }
 
   Future<void> deleteDriver(int id) async {
-    await supabase.from('drivers').delete().eq('id', id);
-    fetchDrivers();
+    try {
+      await supabase.from('drivers').delete().eq('id', id);
+      fetchDrivers();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error deleting driver: $e')),
+      );
+    }
   }
 
   void showDriverDialog({Map<String, dynamic>? driver}) {
@@ -70,29 +116,75 @@ class _ManageDriversScreenState extends State<ManageDriversScreen> {
         text: driver != null ? driver['driver_name'] : '');
     final TextEditingController vehicleController = TextEditingController(
         text: driver != null ? driver['vehicle_number'] : '');
+    final TextEditingController usernameController =
+        TextEditingController(text: driver != null ? driver['username'] : '');
+    final TextEditingController passwordController =
+        TextEditingController(text: driver != null ? '' : '');
+    int? selectedAreaId = driver != null ? driver['area_id'] : null;
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(driver == null ? 'Add Driver' : 'Edit Driver'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Driver Name',
-                prefixIcon: Icon(Icons.person),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Driver Name',
+                  prefixIcon: Icon(Icons.person),
+                ),
               ),
-            ),
-            TextField(
-              controller: vehicleController,
-              decoration: const InputDecoration(
-                labelText: 'Vehicle Number',
-                prefixIcon: Icon(Icons.local_shipping),
+              const SizedBox(height: 8),
+              TextField(
+                controller: vehicleController,
+                decoration: const InputDecoration(
+                  labelText: 'Vehicle Number',
+                  prefixIcon: Icon(Icons.local_shipping),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  prefixIcon: Icon(Icons.account_circle),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: Icon(Icons.lock),
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                value: selectedAreaId,
+                decoration: const InputDecoration(
+                  labelText: 'Delivery Area',
+                  prefixIcon: Icon(Icons.location_on),
+                ),
+                items: deliveryAreas.map((area) {
+                  return DropdownMenuItem<int>(
+                    value: area['id'],
+                    child: Text(area['area_name']),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedAreaId = value;
+                  });
+                },
+                validator: (value) =>
+                    value == null ? 'Please select an area' : null,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -103,20 +195,34 @@ class _ManageDriversScreenState extends State<ManageDriversScreen> {
             onPressed: () async {
               final name = nameController.text.trim();
               final vehicle = vehicleController.text.trim();
+              final username = usernameController.text.trim();
+              final password = passwordController.text.trim();
 
-              if (name.isEmpty || vehicle.isEmpty) {
+              if (name.isEmpty ||
+                  vehicle.isEmpty ||
+                  username.isEmpty ||
+                  password.isEmpty ||
+                  selectedAreaId == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Please fill all fields')),
                 );
                 return;
               }
 
-              if (driver == null) {
-                await addDriver(name, vehicle);
-              } else {
-                await updateDriver(driver['id'], name, vehicle);
+              try {
+                if (driver == null) {
+                  await addDriver(
+                      name, vehicle, username, password, selectedAreaId!);
+                } else {
+                  await updateDriver(driver['id'], name, vehicle, username,
+                      password, selectedAreaId!);
+                }
+                Navigator.pop(context);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: $e')),
+                );
               }
-              Navigator.pop(context);
             },
             child: const Text('Save'),
           ),
@@ -130,7 +236,14 @@ class _ManageDriversScreenState extends State<ManageDriversScreen> {
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       child: ListTile(
         title: Text(driver['driver_name']),
-        subtitle: Text('Vehicle: ${driver['vehicle_number']}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Vehicle: ${driver['vehicle_number']}'),
+            Text('Username: ${driver['username']}'),
+            Text('Area: ${driver['delivery_areas']['area_name']}'),
+          ],
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

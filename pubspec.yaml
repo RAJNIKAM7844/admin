@@ -39,6 +39,7 @@ dependencies:
   fluttertoast: ^8.2.12
   supabase_flutter: ^2.8.4
   google_sign_in: ^6.2.2
+  bcrypt: ^1.1.3
 
 dev_dependencies:
   flutter_test:
