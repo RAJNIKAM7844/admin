@@ -16,6 +16,16 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
   String? _errorMessage;
   final _supabase = Supabase.instance.client;
 
+  /// Helper function to navigate safely after the frame
+  void _redirectToLogin() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const AdminLoginPage()),
+      );
+    });
+  }
+
   Future<void> _updateEggRate() async {
     setState(() {
       _isLoading = true;
@@ -30,11 +40,7 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
           _errorMessage = 'You must be logged in to update the egg rate';
           _isLoading = false;
         });
-        // Navigate to LoginPage
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
-        );
+        _redirectToLogin();
         return;
       }
 
@@ -80,11 +86,7 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
         ),
       );
       if (e.code == '42501') {
-        // Navigate to LoginPage on RLS violation
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
-        );
+        _redirectToLogin();
       }
     } catch (e) {
       setState(() {

@@ -1,16 +1,67 @@
 import 'package:admin_eggs/customers/customers_screen.dart';
 import 'package:admin_eggs/update.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'drivers/manage_drivers_screen.dart';
 import 'drivers/drivers_screen.dart';
 import 'drivers/driver_collection_screen.dart';
 import 'total_collection_screen.dart';
 import 'manage_areas_screen.dart';
 
-class AdminHomeScreen extends StatelessWidget {
+class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
 
-  void _navigateTo(BuildContext context, Widget screen) {
+  @override
+  State<AdminHomeScreen> createState() => _AdminHomeScreenState();
+}
+
+class _AdminHomeScreenState extends State<AdminHomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _verifyAdmin();
+  }
+
+  Future<void> _verifyAdmin() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      _redirectToLogin();
+      return;
+    }
+
+    try {
+      final adminCheck = await Supabase.instance.client
+          .from('admins')
+          .select('email')
+          .eq('email', user.email!)
+          .maybeSingle();
+
+      if (adminCheck == null) {
+        await Supabase.instance.client.auth.signOut();
+        _redirectToLogin();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error verifying admin status: $e')),
+      );
+      _redirectToLogin();
+    }
+  }
+
+  void _redirectToLogin() {
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/login',
+      (Route<dynamic> route) => false,
+    );
+  }
+
+  Future<void> _logout() async {
+    await Supabase.instance.client.auth.signOut();
+    _redirectToLogin();
+  }
+
+  void _navigateTo(Widget screen) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => screen),
@@ -21,13 +72,24 @@ class AdminHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF110734),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
+            tooltip: 'Logout',
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -70,39 +132,37 @@ class AdminHomeScreen extends StatelessWidget {
               _AdminOptionButton(
                 icon: Icons.person,
                 label: "Customers",
-                onTap: () => _navigateTo(context, const CustomersScreen()),
+                onTap: () => _navigateTo(const CustomersScreen()),
               ),
               _AdminOptionButton(
                 icon: Icons.local_shipping,
                 label: "Drivers",
-                onTap: () => _navigateTo(context, const DriversScreen()),
+                onTap: () => _navigateTo(const DriversScreen()),
               ),
               _AdminOptionButton(
                 icon: Icons.manage_accounts,
                 label: "Manage Drivers",
-                onTap: () => _navigateTo(context, const ManageDriversScreen()),
+                onTap: () => _navigateTo(const ManageDriversScreen()),
               ),
               _AdminOptionButton(
                 icon: Icons.attach_money,
                 label: "Driver Collection",
-                onTap: () =>
-                    _navigateTo(context, const DriverCollectionScreen()),
+                onTap: () => _navigateTo(const DriverCollectionScreen()),
               ),
               _AdminOptionButton(
                 icon: Icons.analytics,
                 label: "Total Collection",
-                onTap: () =>
-                    _navigateTo(context, const TotalCollectionScreen()),
+                onTap: () => _navigateTo(const TotalCollectionScreen()),
               ),
               _AdminOptionButton(
                 icon: Icons.egg,
                 label: "Update Egg Price",
-                onTap: () => _navigateTo(context, const UpdateRatePage()),
+                onTap: () => _navigateTo(const UpdateRatePage()),
               ),
               _AdminOptionButton(
                 icon: Icons.location_on,
                 label: "Manage Areas",
-                onTap: () => _navigateTo(context, const ManageAreasScreen()),
+                onTap: () => _navigateTo(const ManageAreasScreen()),
               ),
             ],
           ),
@@ -126,7 +186,7 @@ class _AdminOptionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12), // margin outside for spacing
+      margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.grey.shade300,
         borderRadius: BorderRadius.circular(12),

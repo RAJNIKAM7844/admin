@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/gestures.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class AdminLoginPage extends StatefulWidget {
+  const AdminLoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<AdminLoginPage> createState() => _AdminLoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _AdminLoginPageState extends State<AdminLoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _rememberMe = false;
+  bool _obscurePassword = true;
 
   static const String _emailPattern = r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$';
   static const int _minPasswordLength = 8;
@@ -30,7 +28,6 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    // Input validation
     if (!_validateInputs(email, password)) {
       return;
     }
@@ -38,22 +35,40 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
+      // Simplified query: select only email
+      print('Querying admins table for email: $email');
+      final adminCheck = await Supabase.instance.client
+          .from('admins')
+          .select('email') // Only fetch email column
+          .eq('email', email)
+          .maybeSingle();
+
+      if (adminCheck == null) {
+        print('No admin found for email: $email');
+        throw Exception('No admin account found for this email');
+      }
+
+      print('Admin email found, attempting sign-in');
       final response = await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
 
       if (response.user == null) {
+        print('Sign-in failed: Invalid credentials');
         throw Exception('Invalid credentials');
       }
 
+      print('Sign-in successful, navigating to admin_home');
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } on AuthException catch (e) {
+      print('AuthException: ${e.message}');
       _showSnackBar('Login failed: ${e.message}');
     } catch (e) {
-      _showSnackBar('Login failed: An unexpected error occurred');
+      print('Error: $e');
+      _showSnackBar('Login failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -88,6 +103,7 @@ class _LoginPageState extends State<LoginPage> {
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 3),
+        backgroundColor: Colors.redAccent,
       ),
     );
   }
@@ -96,59 +112,76 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                const Text("Welcome Back",
-                    style:
-                        TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                const Text("Sign in to continue",
-                    style: TextStyle(fontSize: 14, color: Colors.grey)),
-                const SizedBox(height: 30),
-                _buildTextField(Icons.email, "Email Address",
-                    controller: _emailController),
-                _buildTextField(Icons.lock, "Password",
-                    obscureText: true, controller: _passwordController),
-                const SizedBox(height: 15),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _rememberMe,
-                          onChanged: (value) =>
-                              setState(() => _rememberMe = value ?? false),
-                        ),
-                        const Text("Remember me"),
-                      ],
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pushNamed(context, '/reset'),
-                      child: const Text("Forgot Password?",
-                          style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 25),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Admin Login",
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
-                  onPressed: _isLoading ? null : _signIn,
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Sign In",
-                          style: TextStyle(color: Colors.white)),
-                ),
-                const SizedBox(height: 25),
-              ],
+                  const Text(
+                    "Sign in to access admin panel",
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 30),
+                  _buildTextField(
+                    Icons.email,
+                    "Email Address",
+                    controller: _emailController,
+                  ),
+                  _buildTextField(
+                    Icons.lock,
+                    "Password",
+                    obscureText: _obscurePassword,
+                    controller: _passwordController,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/admin_reset'),
+                      child: const Text(
+                        "Forgot Password?",
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 25),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      backgroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _isLoading ? null : _signIn,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            "Sign In",
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -156,8 +189,13 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildTextField(IconData icon, String hint,
-      {bool obscureText = false, required TextEditingController controller}) {
+  Widget _buildTextField(
+    IconData icon,
+    String hint, {
+    bool obscureText = false,
+    required TextEditingController controller,
+    Widget? suffixIcon,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: SizedBox(
@@ -167,6 +205,7 @@ class _LoginPageState extends State<LoginPage> {
           obscureText: obscureText,
           decoration: InputDecoration(
             prefixIcon: Icon(icon, color: Colors.grey),
+            suffixIcon: suffixIcon,
             hintText: hint,
             filled: true,
             fillColor: Colors.grey[200],
@@ -180,64 +219,4 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
-  Widget _socialButton(String imagePath, {VoidCallback? onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              spreadRadius: 1,
-              blurRadius: 5,
-              offset: const Offset(0, 2),
-            )
-          ],
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Image.asset(imagePath, width: 35, height: 35),
-      ),
-    );
-  }
-}
-
-Future<AuthResponse> googleSignIn() async {
-  const webClientId =
-      '54391127653-dnmfm344ms3qv1i4gjg519rffcp6uhed.apps.googleusercontent.com';
-
-  final GoogleSignIn googleSignIn = GoogleSignIn(
-    serverClientId: webClientId,
-    signInOption: SignInOption.standard,
-  );
-
-  // 👇 This will disconnect the previous account to force the picker
-  try {
-    await googleSignIn.disconnect();
-  } catch (_) {
-    // ignore if already disconnected
-  }
-
-  final googleUser = await googleSignIn.signIn();
-
-  if (googleUser == null) {
-    throw Exception('Google Sign-In was cancelled.');
-  }
-
-  final googleAuth = await googleUser.authentication;
-
-  final accessToken = googleAuth.accessToken;
-  final idToken = googleAuth.idToken;
-
-  if (accessToken == null || idToken == null) {
-    throw Exception('Missing Google Auth tokens.');
-  }
-
-  return Supabase.instance.client.auth.signInWithIdToken(
-    provider: OAuthProvider.google,
-    idToken: idToken,
-    accessToken: accessToken,
-  );
 }
