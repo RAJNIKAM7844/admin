@@ -1,5 +1,6 @@
 import 'package:admin_eggs/customers/customers_screen.dart';
-import 'package:admin_eggs/update.dart';
+import 'package:admin_eggs/update.dart' as update;
+import 'package:admin_eggs/updatetraypage.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'drivers/manage_drivers_screen.dart';
@@ -157,7 +158,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               _AdminOptionButton(
                 icon: Icons.egg,
                 label: "Update Egg Price",
-                onTap: () => _navigateTo(const UpdateRatePage()),
+                onTap: () => _navigateTo(const update.UpdateRatePage()),
+              ),
+              _AdminOptionButton(
+                icon: Icons.egg,
+                label: "Update Trays Quantity",
+                onTap: () => _navigateTo(const UpdateTrayPage()),
               ),
               _AdminOptionButton(
                 icon: Icons.location_on,

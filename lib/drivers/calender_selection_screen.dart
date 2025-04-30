@@ -21,11 +21,36 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
   DateTime? _selectedDate;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
+  int _selectedTabIndex = 0; // Track the selected tab
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
     setState(() {
       _selectedDate = selectedDay;
       _focusedDay = focusedDay;
+    });
+  }
+
+  void _onTabChanged(int index) {
+    setState(() {
+      _selectedTabIndex = index;
+      if (index == 1) {
+        // Today Collection tab selected
+        _selectedDate = null; // Clear selected date
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CollectionDetailsScreen(
+              driverId: widget.driverId,
+              driverName: widget.driverName,
+              dateRange: DateTimeRange(
+                start: DateTime.now(),
+                end: DateTime.now(),
+              ),
+              isTodayCollection: true,
+            ),
+          ),
+        );
+      }
     });
   }
 
@@ -58,12 +83,14 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
                     Expanded(
                       child: DefaultTabController(
                         length: 2,
+                        initialIndex: _selectedTabIndex,
                         child: TabBar(
+                          onTap: _onTabChanged,
                           indicatorColor: Colors.white,
                           labelColor: Colors.white,
                           unselectedLabelColor: Colors.grey,
                           tabs: const [
-                            Tab(text: 'Collection by date'),
+                            Tab(text: 'Collection by Date'),
                             Tab(text: 'Today Collection'),
                           ],
                         ),
@@ -73,93 +100,99 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
                 ),
               ),
               // Date Display
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _selectedDate == null
-                      ? 'Select Date'
-                      : 'Start Date: ${_selectedDate!.day} ${_selectedDate!.monthName} ${_selectedDate!.year}',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              ),
-              // Calendar
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TableCalendar(
-                    firstDay: DateTime(2020),
-                    lastDay: DateTime(2030),
-                    focusedDay: _focusedDay,
-                    calendarFormat: _calendarFormat,
-                    selectedDayPredicate: (day) =>
-                        isSameDay(_selectedDate, day),
-                    onDaySelected: _onDaySelected,
-                    calendarStyle: CalendarStyle(
-                      todayDecoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
-                      selectedDecoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    headerStyle: const HeaderStyle(
-                      formatButtonVisible: false,
-                      titleCentered: true,
-                    ),
-                    onPageChanged: (focusedDay) {
-                      _focusedDay = focusedDay;
-                    },
+              if (_selectedTabIndex == 0)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    _selectedDate == null
+                        ? 'Select Date'
+                        : 'Start Date: ${_selectedDate!.day} ${_selectedDate!.monthName} ${_selectedDate!.year}',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ),
-              ),
-              // Continue Button
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _selectedDate == null
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => CollectionDetailsScreen(
-                                  driverId: widget.driverId,
-                                  driverName: widget.driverName,
-                                  dateRange: DateTimeRange(
-                                      start: _selectedDate!,
-                                      end: _selectedDate!),
+              // Calendar (only shown for "Collection by Date")
+              if (_selectedTabIndex == 0)
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TableCalendar(
+                      firstDay: DateTime(2020),
+                      lastDay: DateTime(2030),
+                      focusedDay: _focusedDay,
+                      calendarFormat: _calendarFormat,
+                      selectedDayPredicate: (day) =>
+                          isSameDay(_selectedDate, day),
+                      onDaySelected: _onDaySelected,
+                      enabledDayPredicate: (day) =>
+                          !day.isAfter(DateTime.now()),
+                      calendarStyle: CalendarStyle(
+                        todayDecoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                        selectedDecoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      headerStyle: const HeaderStyle(
+                        formatButtonVisible: false,
+                        titleCentered: true,
+                      ),
+                      onPageChanged: (focusedDay) {
+                        _focusedDay = focusedDay;
+                      },
+                    ),
+                  ),
+                ),
+              // Continue Button (only shown for "Collection by Date")
+              if (_selectedTabIndex == 0)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _selectedDate == null
+                          ? null
+                          : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CollectionDetailsScreen(
+                                    driverId: widget.driverId,
+                                    driverName: widget.driverName,
+                                    dateRange: DateTimeRange(
+                                        start: _selectedDate!,
+                                        end: _selectedDate!),
+                                    isTodayCollection: false,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                              );
+                            },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        backgroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey[300],
                       ),
-                      backgroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey[300],
-                    ),
-                    child: const Text(
-                      'Continue',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
+                      child: const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

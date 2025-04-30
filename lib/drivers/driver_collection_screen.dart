@@ -30,11 +30,10 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
       print('Fetching drivers with areas...');
 
       // Fetch drivers with their associated delivery area using area_id
-      final driverResponse = await supabase
-          .from('drivers')
-          .select(
-              'id, driver_name, vehicle_number, delivery_areas!area_id(area_name)')
-          .order('driver_name', ascending: true);
+      final driverResponse = await supabase.from('drivers').select('''
+            id, driver_name, vehicle_number, 
+            delivery_areas!area_id(area_name)
+          ''').order('driver_name', ascending: true);
 
       print('Fetched drivers with areas: $driverResponse');
 
@@ -199,7 +198,6 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
                   ],
                 ),
               ),
-
               // Search bar
               Padding(
                 padding:
@@ -230,7 +228,6 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
                   ),
                 ),
               ),
-
               // Driver list
               Expanded(
                 child: isLoading
