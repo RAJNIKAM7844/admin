@@ -1,5 +1,6 @@
 import 'package:admin_eggs/drivers/calender_selection_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DriverCollectionScreen extends StatefulWidget {
@@ -13,8 +14,8 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> drivers = [];
   List<Map<String, dynamic>> filteredDrivers = [];
-  bool isLoading = false;
   TextEditingController searchController = TextEditingController();
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -23,27 +24,17 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
   }
 
   Future<void> fetchDrivers() async {
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
     try {
-      print('Fetching drivers with areas...');
-
-      // Fetch drivers with their associated delivery area using area_id
-      final driverResponse = await supabase.from('drivers').select('''
-            id, driver_name, vehicle_number, 
-            delivery_areas!area_id(area_name)
+      final response = await supabase.from('drivers').select('''
+            id, driver_name, vehicle_number, delivery_areas!left(area_name)
           ''').order('driver_name', ascending: true);
 
-      print('Fetched drivers with areas: $driverResponse');
-
       setState(() {
-        drivers = List<Map<String, dynamic>>.from(driverResponse);
-        filteredDrivers = List<Map<String, dynamic>>.from(driverResponse);
+        drivers = List<Map<String, dynamic>>.from(response);
+        filteredDrivers = List<Map<String, dynamic>>.from(response);
         isLoading = false;
       });
-
-      print('Number of drivers fetched: ${drivers.length}');
     } catch (e) {
       setState(() {
         drivers = [];
@@ -58,98 +49,119 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
 
   void filterDrivers(String query) {
     final lowerQuery = query.toLowerCase();
-    print('Search query: $lowerQuery');
-
     setState(() {
       filteredDrivers = drivers.where((driver) {
         final name = driver['driver_name']?.toLowerCase() ?? '';
-        final area =
-            driver['delivery_areas']?['area_name']?.toLowerCase() ?? '';
-        print('Driver: ${driver['driver_name']}, Area: $area');
+        String area = '';
+        final deliveryAreas = driver['delivery_areas'];
+        if (deliveryAreas != null) {
+          if (deliveryAreas is Map && deliveryAreas['area_name'] != null) {
+            area = deliveryAreas['area_name'].toLowerCase();
+          } else if (deliveryAreas is List &&
+              deliveryAreas.isNotEmpty &&
+              deliveryAreas[0]['area_name'] != null) {
+            area = deliveryAreas[0]['area_name'].toLowerCase();
+          }
+        }
         return name.contains(lowerQuery) || area.contains(lowerQuery);
       }).toList();
-      print('Filtered drivers: $filteredDrivers');
     });
   }
 
   Widget buildDriverItem(Map<String, dynamic> driver) {
-    final areaName =
-        driver['delivery_areas']?['area_name'] ?? 'No area assigned';
+    final areaName = driver['delivery_areas'] is Map &&
+            driver['delivery_areas']['area_name'] != null
+        ? driver['delivery_areas']['area_name']
+        : 'No area assigned';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Material(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(16),
-        elevation: 3,
-        shadowColor: Colors.black87,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          splashColor: Colors.white24,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CalendarSelectionScreen(
-                  driverId: driver['id'],
-                  driverName: driver['driver_name'] ?? 'Unknown',
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AnimatedScale(
+        scale: 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            splashColor: Colors.white.withOpacity(0.3),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CalendarSelectionScreen(
+                    driverId: driver['id'],
+                    driverName: driver['driver_name'] ?? 'Unknown',
+                  ),
                 ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white70, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.6),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const CircleAvatar(
-                    radius: 26,
-                    backgroundColor: Colors.grey,
-                    child: Icon(Icons.person, color: Colors.black54, size: 28),
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        driver['driver_name'] ?? 'Unknown',
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+              child: Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        areaName,
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 22,
+                      backgroundColor: Colors.grey.shade200,
+                      child:
+                          Icon(Icons.person, color: Colors.black54, size: 22),
+                    ),
                   ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.black54,
-                  size: 18,
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          driver['driver_name'] ?? 'Unknown',
+                          style: GoogleFonts.roboto(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          areaName,
+                          style: GoogleFonts.roboto(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white.withOpacity(0.7),
+                    size: 16,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -161,15 +173,11 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF1A0841),
-              Color(0xFF3B322C),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
@@ -182,66 +190,95 @@ class _DriverCollectionScreenState extends State<DriverCollectionScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back,
+                          color: Colors.white, size: 24),
                       onPressed: () => Navigator.pop(context),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Driver Collection',
-                      style: TextStyle(
+                    Text(
+                      'Driver Collections',
+                      style: GoogleFonts.roboto(
                         color: Colors.white,
                         fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
                 ),
               ),
-              // Search bar
+              // Search Bar
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: TextField(
                     controller: searchController,
                     onChanged: filterDrivers,
-                    style: const TextStyle(color: Colors.black87),
+                    style:
+                        GoogleFonts.roboto(color: Colors.white, fontSize: 15),
                     decoration: InputDecoration(
-                      hintText: 'search by name, address',
-                      hintStyle: TextStyle(color: Colors.grey.shade600),
+                      hintText: 'Search by name or area',
+                      hintStyle: GoogleFonts.roboto(
+                          color: Colors.white.withOpacity(0.5)),
                       border: InputBorder.none,
-                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      prefixIcon: Icon(Icons.search,
+                          color: Colors.white.withOpacity(0.7)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
                     ),
                   ),
                 ),
               ),
-              // Driver list
+              // Driver List
               Expanded(
                 child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Loading Drivers...',
+                              style: GoogleFonts.roboto(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
                     : filteredDrivers.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
                               'No drivers found.',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 18),
+                              style: GoogleFonts.roboto(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           )
                         : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             itemCount: filteredDrivers.length,
                             itemBuilder: (context, index) {
                               return buildDriverItem(filteredDrivers[index]);

@@ -1,9 +1,9 @@
 import 'package:admin_eggs/admin_home_screen.dart';
-import 'package:admin_eggs/calendar.dart';
 import 'package:admin_eggs/forgot.dart';
 import 'package:admin_eggs/login.dart';
 import 'package:admin_eggs/update.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const AuthCheck(), // Use AuthCheck as the home widget
+      home: const AuthCheck(),
       routes: {
         '/login': (context) => const AdminLoginPage(),
         '/admin_reset': (context) => const AdminForgotPasswordPage(),
@@ -34,7 +34,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Widget to check authentication state and navigate accordingly
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
 
@@ -44,18 +43,48 @@ class AuthCheck extends StatelessWidget {
       future: Future.value(Supabase.instance.client.auth.currentSession),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // Show a loading indicator while checking the session
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Egg Admin',
+                      style: GoogleFonts.roboto(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 40,
+                      width: 40,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
-        // If there's an active session and a user, go to AdminHomeScreen
         if (snapshot.hasData && snapshot.data != null) {
           return const AdminHomeScreen();
         }
 
-        // Otherwise, go to AdminLoginPage
         return const AdminLoginPage();
       },
     );

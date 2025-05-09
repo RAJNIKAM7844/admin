@@ -1,172 +1,8 @@
 import 'package:admin_eggs/login.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-class UpdateRatePage extends StatefulWidget {
-  const UpdateRatePage({super.key});
-
-  @override
-  State<UpdateRatePage> createState() => _UpdateRatePageState();
-}
-
-class _UpdateRatePageState extends State<UpdateRatePage> {
-  final _rateController = TextEditingController();
-  bool _isLoading = false;
-  String? _errorMessage;
-  final _supabase = Supabase.instance.client;
-
-  void _redirectToLogin() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const AdminLoginPage()),
-      );
-    });
-  }
-
-  Future<void> _updateEggRate() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) {
-        setState(() {
-          _errorMessage = 'You must be logged in to update the egg rate';
-          _isLoading = false;
-        });
-        _redirectToLogin();
-        return;
-      }
-
-      final newRate = double.tryParse(_rateController.text);
-      if (newRate == null || newRate <= 0) {
-        setState(() {
-          _errorMessage = 'Please enter a valid positive number';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      await _supabase.from('egg_rates').upsert({
-        'id': 1,
-        'rate': newRate,
-        'updated_at': DateTime.now().toIso8601String(),
-      });
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Egg rate updated successfully'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    } on PostgrestException catch (e) {
-      setState(() {
-        _errorMessage = e.code == '42501'
-            ? 'Permission denied: Please log in again'
-            : 'Error updating rate: ${e.message}';
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_errorMessage!),
-          backgroundColor: Colors.red,
-        ),
-      );
-      if (e.code == '42501') {
-        _redirectToLogin();
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Unexpected error: $e';
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unexpected error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _rateController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Update Egg Rate'),
-        backgroundColor: const Color(0xFFB3D2F2),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFB3D2F2), Colors.white],
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Enter New Egg Rate (₹)',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _rateController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelText: 'Egg Rate',
-                prefixText: '₹ ',
-                errorText: _errorMessage,
-                filled: true,
-                fillColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _updateEggRate,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 4,
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      'Update Rate',
-                      style: TextStyle(fontSize: 18),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class UpdateTrayPage extends StatefulWidget {
   const UpdateTrayPage({super.key});
@@ -202,9 +38,21 @@ class _UpdateTrayPageState extends State<UpdateTrayPage> {
           selectedDriverId = drivers[0]['id'].toString();
         }
       });
+    } on PostgrestException catch (e) {
+      String message;
+      if (e.code == '42P01') {
+        message = 'Table "drivers" does not exist. Verify Supabase schema.';
+      } else if (e.code == '42501') {
+        message = 'Permission denied for "drivers". Check RLS policies.';
+      } else {
+        message = 'Error fetching drivers: ${e.message} (Code: ${e.code})';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching drivers: $e')),
+        SnackBar(content: Text('Unexpected error fetching drivers: $e')),
       );
     }
   }
@@ -265,34 +113,39 @@ class _UpdateTrayPageState extends State<UpdateTrayPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Tray quantity updated successfully'),
-          backgroundColor: Colors.blue,
+          backgroundColor: Color(0xFF4CAF50),
         ),
       );
     } on PostgrestException catch (e) {
+      String message;
+      if (e.code == '42501') {
+        message = 'Permission denied: Please log in again';
+        _redirectToLogin();
+      } else if (e.code == '42P01') {
+        message =
+            'Table "tray_quantities" does not exist. Verify Supabase schema.';
+      } else {
+        message = 'Error updating quantity: ${e.message} (Code: ${e.code})';
+      }
       setState(() {
-        _errorMessage = e.code == '42501'
-            ? 'Permission denied: Please log in again'
-            : 'Error updating quantity: ${e.message}';
+        _errorMessage = message;
         _isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_errorMessage!),
-          backgroundColor: Colors.red,
+          content: Text(message),
+          backgroundColor: Colors.redAccent,
         ),
       );
-      if (e.code == '42501') {
-        _redirectToLogin();
-      }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Unexpected error: $e';
+        _errorMessage = 'Unexpected error updating quantity: $e';
         _isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unexpected error: $e'),
-          backgroundColor: Colors.red,
+          content: Text('Unexpected error updating quantity: $e'),
+          backgroundColor: Colors.redAccent,
         ),
       );
     }
@@ -307,85 +160,223 @@ class _UpdateTrayPageState extends State<UpdateTrayPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Update Tray Quantity'),
-        backgroundColor: const Color(0xFFB3D2F2),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFB3D2F2), Colors.white],
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Select Driver and Enter Tray Quantity',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              value: selectedDriverId,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelText: 'Select Driver',
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              items: drivers.map((driver) {
-                return DropdownMenuItem<String>(
-                  value: driver['id'].toString(),
-                  child: Text(driver['driver_name'] ?? 'Unknown'),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedDriverId = value;
-                });
-              },
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _trayController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelText: 'Tray Quantity',
-                errorText: _errorMessage,
-                filled: true,
-                fillColor: Colors.white,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _updateTrayQuantity,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 4,
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      'Update Quantity',
-                      style: TextStyle(fontSize: 18),
+            child: CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  pinned: true,
+                  backgroundColor: Colors.transparent,
+                  flexibleSpace: FlexibleSpaceBar(
+                    title: Text(
+                      'Update Tray Quantity',
+                      style: GoogleFonts.roboto(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
                     ),
+                    titlePadding: const EdgeInsets.only(left: 72, bottom: 16),
+                  ),
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back,
+                        color: Colors.white, size: 24),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black,
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Set Tray Quantity',
+                              style: GoogleFonts.roboto(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Select a driver and enter the tray quantity',
+                              style: GoogleFonts.roboto(
+                                fontSize: 14,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              value: selectedDriverId,
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(
+                                  Icons.person,
+                                  color: Colors.grey,
+                                ),
+                                labelText: 'Select Driver',
+                                labelStyle: GoogleFonts.roboto(
+                                  color: Colors.grey,
+                                  fontSize: 15,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade200,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                              dropdownColor: Colors.white,
+                              style: GoogleFonts.roboto(
+                                color: Colors.black,
+                                fontSize: 15,
+                                letterSpacing: 0.5,
+                              ),
+                              items: drivers.map((driver) {
+                                return DropdownMenuItem<String>(
+                                  value: driver['id'].toString(),
+                                  child:
+                                      Text(driver['driver_name'] ?? 'Unknown'),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                HapticFeedback.lightImpact();
+                                setState(() {
+                                  selectedDriverId = value;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _trayController,
+                              keyboardType: TextInputType.number,
+                              style: GoogleFonts.roboto(
+                                color: Colors.black,
+                                fontSize: 15,
+                                letterSpacing: 0.5,
+                              ),
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(
+                                  Icons.egg,
+                                  color: Colors.grey,
+                                ),
+                                labelText: 'Tray Quantity',
+                                labelStyle: GoogleFonts.roboto(
+                                  color: Colors.grey,
+                                  fontSize: 15,
+                                ),
+                                errorText: _errorMessage,
+                                errorStyle: GoogleFonts.roboto(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade200,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      HapticFeedback.lightImpact();
+                                      _updateTrayQuantity();
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 20),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: const BorderSide(color: Colors.grey),
+                                ),
+                                minimumSize: const Size(double.infinity, 50),
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFE91E63),
+                                      Color(0xFF4CAF50)
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 20),
+                                child: _isLoading
+                                    ? const CircularProgressIndicator(
+                                        color: Colors.white)
+                                    : Text(
+                                        'Update Quantity',
+                                        style: GoogleFonts.roboto(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black,
+              child: Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

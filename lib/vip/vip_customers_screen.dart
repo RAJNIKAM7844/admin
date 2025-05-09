@@ -3,19 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class CustomersScreen extends StatefulWidget {
-  const CustomersScreen({super.key});
+class VipCustomersScreen extends StatefulWidget {
+  const VipCustomersScreen({super.key});
 
   @override
-  State<CustomersScreen> createState() => _CustomersScreenState();
+  State<VipCustomersScreen> createState() => _VipCustomersScreenState();
 }
 
-class _CustomersScreenState extends State<CustomersScreen> {
+class _VipCustomersScreenState extends State<VipCustomersScreen> {
   final supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> customers = [];
-  List<Map<String, dynamic>> filteredCustomers = [];
+  List<dynamic> customers = [];
+  List<dynamic> filteredCustomers = [];
   TextEditingController searchController = TextEditingController();
   bool isLoading = false;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -24,48 +25,54 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   Future<void> fetchCustomers() async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
     try {
-      final userResponse = await supabase
-          .from('users')
+      print('Fetching customers from wholesale_users');
+      final response = await supabase
+          .from('wholesale_users')
           .select('id, full_name, location, phone, profile_image, shop_image')
           .order('full_name');
-
-      List<Map<String, dynamic>> customerList = [];
-      for (var user in userResponse) {
-        final userId = user['id'].toString();
-        double creditBalance = 0.0;
-
-        final transactionsResponse = await supabase
-            .from('transactions')
-            .select('credit, paid')
-            .eq('user_id', userId);
-
-        creditBalance = transactionsResponse.fold(0.0,
-                (sum, t) => sum + (t['credit'] as num? ?? 0.0).toDouble()) -
-            transactionsResponse.fold(
-                0.0, (sum, t) => sum + (t['paid'] as num? ?? 0.0).toDouble());
-
-        customerList.add({
-          ...user,
-          'credit_balance': creditBalance,
-        });
-      }
-
+      print('Fetch successful: ${response.length} customers retrieved');
       setState(() {
-        customers = customerList;
-        filteredCustomers = customerList;
+        customers = response;
+        filteredCustomers = response;
         isLoading = false;
       });
+    } on PostgrestException catch (e) {
+      String message;
+      if (e.code == '42P01') {
+        message =
+            'Table "wholesale_users" does not exist. Ensure the table is set up in Supabase.';
+      } else if (e.code == '42501') {
+        message =
+            'Permission denied for table "wholesale_users". Verify RLS policies.';
+      } else {
+        message = 'Error fetching customers: ${e.message} (Code: ${e.code})';
+      }
+      setState(() {
+        customers = [];
+        filteredCustomers = [];
+        isLoading = false;
+        errorMessage = message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      print('PostgrestException in fetchCustomers: $e, Details: ${e.details}');
     } catch (e) {
       setState(() {
         customers = [];
         filteredCustomers = [];
         isLoading = false;
+        errorMessage = 'Unexpected error fetching customers: $e';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching customers: $e')),
+        SnackBar(content: Text('Unexpected error fetching customers: $e')),
       );
+      print('Unexpected error in fetchCustomers: $e');
     }
   }
 
@@ -80,7 +87,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     });
   }
 
-  Widget buildCustomerItem(Map<String, dynamic> customer) {
+  Widget buildCustomerItem(dynamic customer) {
     final imageUrl = customer['profile_image'] ?? '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -90,7 +97,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             splashColor: Colors.white.withOpacity(0.3),
             onTap: () {
               Navigator.push(
@@ -102,6 +109,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     area: customer['location'] ?? '-',
                     profileImageUrl: imageUrl,
                     shopImageUrl: customer['shop_image'] ?? '',
+                    schema: 'public',
                   ),
                 ),
               );
@@ -110,13 +118,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white.withOpacity(0.2)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
@@ -135,12 +143,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       ],
                     ),
                     child: CircleAvatar(
-                      radius: 24,
+                      radius: 22,
                       backgroundColor: Colors.grey.shade200,
                       backgroundImage:
                           imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
                       child: imageUrl.isEmpty
-                          ? Icon(Icons.person, color: Colors.black54, size: 24)
+                          ? Icon(Icons.person, color: Colors.black54, size: 22)
                           : null,
                     ),
                   ),
@@ -155,26 +163,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
                           customer['location'] ?? '-',
                           style: GoogleFonts.roboto(
                             color: Colors.white.withOpacity(0.7),
-                            fontSize: 13,
+                            fontSize: 14,
                             fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Credit Balance: ₹${(customer['credit_balance'] as double).toStringAsFixed(2)}',
-                          style: GoogleFonts.roboto(
-                            color: customer['credit_balance'] >= 0
-                                ? Colors.redAccent
-                                : Colors.green,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -208,7 +206,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Header
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -232,8 +229,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   ],
                 ),
               ),
-
-              // Search Bar
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -253,12 +248,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   child: TextField(
                     controller: searchController,
                     onChanged: filterCustomers,
-                    style:
-                        GoogleFonts.roboto(color: Colors.white, fontSize: 15),
+                    style: GoogleFonts.roboto(
+                        color: Colors.white, fontSize: 15, letterSpacing: 0.5),
                     decoration: InputDecoration(
                       hintText: 'Search by name or location',
                       hintStyle: GoogleFonts.roboto(
-                          color: Colors.white.withOpacity(0.5)),
+                          color: Colors.white.withOpacity(0.5), fontSize: 15),
                       border: InputBorder.none,
                       prefixIcon: Icon(Icons.search,
                           color: Colors.white.withOpacity(0.7)),
@@ -268,8 +263,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   ),
                 ),
               ),
-
-              // Customer List
               Expanded(
                 child: isLoading
                     ? Center(
@@ -277,41 +270,112 @@ class _CustomersScreenState extends State<CustomersScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             CircularProgressIndicator(
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                             const SizedBox(height: 12),
                             Text(
                               'Loading Customers...',
                               style: GoogleFonts.roboto(
                                 color: Colors.white.withOpacity(0.7),
-                                fontSize: 15,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
                         ),
                       )
-                    : filteredCustomers.isEmpty
+                    : errorMessage != null
                         ? Center(
-                            child: Text(
-                              'No customers found.',
-                              style: GoogleFonts.roboto(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: Colors.white.withOpacity(0.7),
+                                  size: 40,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  errorMessage!,
+                                  style: GoogleFonts.roboto(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                ElevatedButton(
+                                  onPressed: fetchCustomers,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12, horizontal: 20),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(
+                                          color: Colors.white.withOpacity(0.2)),
+                                    ),
+                                  ),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          Color(0xFF4CAF50)
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12, horizontal: 20),
+                                    child: Text(
+                                      'Retry',
+                                      style: GoogleFonts.roboto(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            itemCount: filteredCustomers.length,
-                            itemBuilder: (context, index) {
-                              return buildCustomerItem(
-                                  filteredCustomers[index]);
-                            },
-                          ),
+                        : filteredCustomers.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: Colors.white.withOpacity(0.7),
+                                      size: 40,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'No customers found.',
+                                      style: GoogleFonts.roboto(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                itemCount: filteredCustomers.length,
+                                itemBuilder: (context, index) {
+                                  return buildCustomerItem(
+                                      filteredCustomers[index]);
+                                },
+                              ),
               ),
             ],
           ),

@@ -35,6 +35,7 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
   void initState() {
     super.initState();
     fetchTransactions();
+    setupRealtimeSubscription();
   }
 
   Future<void> fetchTransactions() async {
@@ -42,7 +43,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
       isLoading = true;
     });
     try {
-      // Determine the date range for fetching transactions
       DateTime startDate;
       DateTime endDate;
       if (widget.isTodayCollection) {
@@ -56,9 +56,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
             widget.dateRange.end.month, widget.dateRange.end.day, 23, 59, 59);
       }
 
-      print('Fetching transactions from $startDate to $endDate');
-
-      // Step 1: Fetch the driver's area_id from drivers table
       final driverResponse = await supabase
           .from('drivers')
           .select('area_id')
@@ -67,23 +64,10 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
           .maybeSingle();
 
       if (driverResponse == null || driverResponse['area_id'] == null) {
-        setState(() {
-          transactionsByDateAndUser = {};
-          creditTotalsByDateAndUser = {};
-          paidTotalsByDateAndUser = {};
-          dailyCreditTotals = {};
-          dailyPaidTotals = {};
-          isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No area assigned to this driver')),
-        );
-        return;
+        throw Exception('No area assigned to driver ID ${widget.driverId}');
       }
-
       final areaId = driverResponse['area_id'];
 
-      // Step 2: Fetch the area_name from delivery_areas using area_id
       final areaResponse = await supabase
           .from('delivery_areas')
           .select('area_name')
@@ -92,24 +76,10 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
           .maybeSingle();
 
       if (areaResponse == null || areaResponse['area_name'] == null) {
-        setState(() {
-          transactionsByDateAndUser = {};
-          creditTotalsByDateAndUser = {};
-          paidTotalsByDateAndUser = {};
-          dailyCreditTotals = {};
-          dailyPaidTotals = {};
-          isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Area not found')),
-        );
-        return;
+        throw Exception('Area not found for area ID $areaId');
       }
-
       final areaName = areaResponse['area_name'];
-      print('Area name: $areaName');
 
-      // Step 3: Fetch users in the driver's area
       final usersResponse = await supabase
           .from('users')
           .select('id, full_name, location')
@@ -117,18 +87,14 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
 
       List<Map<String, dynamic>> users =
           List<Map<String, dynamic>>.from(usersResponse);
-      print('Users fetched: $users');
 
-      // Step 4: Fetch transactions for the specified date range
       final transactionsResponse = await supabase
           .from('transactions')
           .select('user_id, credit, paid, date, mode_of_payment')
+          .eq('driver_id', widget.driverId)
           .gte('date', startDate.toIso8601String())
           .lte('date', endDate.toIso8601String());
 
-      print('Transactions fetched: $transactionsResponse');
-
-      // Step 5: Group transactions by date and user
       Map<DateTime, Map<String, List<Map<String, dynamic>>>>
           tempTransactionsByDateAndUser = {};
       Map<DateTime, Map<String, double>> tempCreditTotalsByDateAndUser = {};
@@ -146,15 +112,12 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         final dateKey = DateTime(
             transactionDate.year, transactionDate.month, transactionDate.day);
 
-        // Find matching user
         var matchingUser = users.firstWhere(
           (user) => user['id'].toString() == userId,
           orElse: () => {'full_name': 'Customer $userId'},
         );
-
         final userName = matchingUser['full_name'];
 
-        // Initialize data structures
         tempTransactionsByDateAndUser[dateKey] ??= {};
         tempTransactionsByDateAndUser[dateKey]![userName] ??= [];
         tempCreditTotalsByDateAndUser[dateKey] ??= {};
@@ -164,14 +127,12 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         tempDailyCreditTotals[dateKey] ??= 0.0;
         tempDailyPaidTotals[dateKey] ??= 0.0;
 
-        // Add transaction to the user’s list for the date
         tempTransactionsByDateAndUser[dateKey]![userName]!.add({
           'credit': credit,
           'paid': paid,
           'mode_of_payment': modeOfPayment,
         });
 
-        // Update totals
         tempCreditTotalsByDateAndUser[dateKey]![userName] =
             tempCreditTotalsByDateAndUser[dateKey]![userName]! + credit;
         tempPaidTotalsByDateAndUser[dateKey]![userName] =
@@ -181,7 +142,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         tempDailyPaidTotals[dateKey] = tempDailyPaidTotals[dateKey]! + paid;
       }
 
-      // For "Today Collection", ensure only today's transactions are shown
       if (widget.isTodayCollection) {
         final today = DateTime.now();
         final todayKey = DateTime(today.year, today.month, today.day);
@@ -190,7 +150,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         tempPaidTotalsByDateAndUser.removeWhere((key, _) => key != todayKey);
         tempDailyCreditTotals.removeWhere((key, _) => key != todayKey);
         tempDailyPaidTotals.removeWhere((key, _) => key != todayKey);
-        print('Filtered for today ($todayKey): $tempTransactionsByDateAndUser');
       }
 
       setState(() {
@@ -201,13 +160,9 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         dailyPaidTotals = tempDailyPaidTotals;
         isLoading = false;
       });
-
-      print('Transactions by date and user: $tempTransactionsByDateAndUser');
-      print('Credit totals: $tempCreditTotalsByDateAndUser');
-      print('Paid totals: $tempPaidTotalsByDateAndUser');
-      print('Daily credit totals: $tempDailyCreditTotals');
-      print('Daily paid totals: $tempDailyPaidTotals');
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Error fetching transactions: $e');
+      print('Stack trace: $stackTrace');
       setState(() {
         transactionsByDateAndUser = {};
         creditTotalsByDateAndUser = {};
@@ -219,8 +174,27 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error fetching transactions: $e')),
       );
-      print('Error: $e');
     }
+  }
+
+  void setupRealtimeSubscription() {
+    supabase
+        .channel('driver_${widget.driverId}_collections')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'transactions',
+          callback: (payload) {
+            fetchTransactions();
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    supabase.channel('driver_${widget.driverId}_collections').unsubscribe();
+    super.dispose();
   }
 
   @override
@@ -235,321 +209,355 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF1A0841),
-              Color(0xFF3B322C),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      widget.isTodayCollection
-                          ? 'Today\'s Collection'
-                          : 'Collection by Date',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white),
-                      onPressed: fetchTransactions,
-                    ),
-                  ],
-                ),
-              ),
-              // Driver Info and Grand Totals
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                child: Column(
-                  children: [
-                    Material(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 12, horizontal: 16),
-                        child: Row(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.white70, width: 2),
-                              ),
-                              child: const CircleAvatar(
-                                radius: 26,
-                                backgroundColor: Colors.grey,
-                                child: Icon(Icons.person,
-                                    color: Colors.black54, size: 28),
-                              ),
+          child: RefreshIndicator(
+            onRefresh: fetchTransactions,
+            color: Colors.white,
+            backgroundColor: const Color(0xFFE91E63),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back,
+                              color: Colors.white, size: 24),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.isTodayCollection
+                                ? 'Today\'s Collection'
+                                : 'Collection by Date',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
                             ),
-                            const SizedBox(width: 20),
-                            Expanded(
-                              child: Text(
-                                widget.driverName,
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Summary Card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.black54, width: 1.5),
                                 ),
+                                child: const CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: Colors.grey,
+                                  child:
+                                      Icon(Icons.person, color: Colors.black54),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  widget.driverName,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            widget.isTodayCollection
+                                ? 'Date: ${DateFormat('d MMMM yyyy').format(DateTime.now())}'
+                                : 'Date Selected: ${DateFormat('d MMM yyyy').format(widget.dateRange.start)}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.black.withOpacity(0.7),
+                            ),
+                          ),
+                          if (!widget.isTodayCollection) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Grand Total: Credit ₹${grandCredit.toStringAsFixed(0)}, Paid ₹${grandPaid.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
                               ),
                             ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    if (!widget.isTodayCollection) ...[
-                      Text(
-                        'Date Range: ${DateFormat('d MMM yyyy').format(widget.dateRange.start)} - ${DateFormat('d MMM yyyy').format(widget.dateRange.end)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
+                  ),
+                  const SizedBox(height: 16),
+                  // Transaction History
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Transaction History',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Grand Total: Credit ₹${grandCredit.toStringAsFixed(0)}, Paid ₹${grandPaid.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                    if (widget.isTodayCollection)
-                      Text(
-                        'Date: ${DateFormat('d MMMM yyyy').format(DateTime.now())}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              // Transactions List
-              Expanded(
-                child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : transactionsByDateAndUser.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No transactions found.',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 18),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: transactionsByDateAndUser.length,
-                            itemBuilder: (context, index) {
-                              final date = transactionsByDateAndUser.keys
-                                  .toList()
-                                ..sort((a, b) =>
-                                    b.compareTo(a)); // Sort descending
-                              final currentDate = date[index];
-                              final userTransactions =
-                                  transactionsByDateAndUser[currentDate]!;
-                              final dailyCreditTotal =
-                                  dailyCreditTotals[currentDate] ?? 0.0;
-                              final dailyPaidTotal =
-                                  dailyPaidTotals[currentDate] ?? 0.0;
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: Material(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Container(
+                        const SizedBox(height: 12),
+                        isLoading
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : transactionsByDateAndUser.isEmpty
+                                ? Container(
                                     padding: const EdgeInsets.all(16),
+                                    width: double.infinity,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        // Date and Daily Totals
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              DateFormat('d MMMM yyyy')
-                                                  .format(currentDate),
-                                              style: const TextStyle(
-                                                color: Colors.black,
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
+                                        Icon(
+                                          Icons.info_outline,
+                                          color: Colors.white.withOpacity(0.7),
+                                          size: 40,
                                         ),
                                         const SizedBox(height: 8),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              'Total Credit: ₹${dailyCreditTotal.toStringAsFixed(0)}',
-                                              style: const TextStyle(
-                                                color: Colors.black,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                            Text(
-                                              'Total Paid: ₹${dailyPaidTotal.toStringAsFixed(0)}',
-                                              style: const TextStyle(
-                                                color: Colors.black,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                          ],
+                                        Text(
+                                          'No transactions found.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
-                                        const Divider(),
-                                        // Customer List for the Date
-                                        ...userTransactions.entries
-                                            .map((entry) {
-                                          final userName = entry.key;
-                                          final transactions = entry.value;
-                                          final creditTotal =
-                                              creditTotalsByDateAndUser[
-                                                      currentDate]![userName] ??
-                                                  0.0;
-                                          final paidTotal =
-                                              paidTotalsByDateAndUser[
-                                                      currentDate]![userName] ??
-                                                  0.0;
-
-                                          return Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 8),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Container(
-                                                      decoration: BoxDecoration(
-                                                        shape: BoxShape.circle,
-                                                        border: Border.all(
-                                                            color:
-                                                                Colors.black54,
-                                                            width: 2),
-                                                      ),
-                                                      child: const CircleAvatar(
-                                                        radius: 20,
-                                                        backgroundColor:
-                                                            Colors.grey,
-                                                        child: Icon(
-                                                            Icons.person,
-                                                            color:
-                                                                Colors.black54,
-                                                            size: 22),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 16),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            userName,
-                                                            style:
-                                                                const TextStyle(
-                                                              color:
-                                                                  Colors.black,
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
-                                                          ),
-                                                          Text(
-                                                            'Credit: ₹${creditTotal.toStringAsFixed(2)}',
-                                                            style:
-                                                                const TextStyle(
-                                                              color: Colors
-                                                                  .black54,
-                                                              fontSize: 14,
-                                                            ),
-                                                          ),
-                                                          Text(
-                                                            'Paid: ₹${paidTotal.toStringAsFixed(2)}',
-                                                            style:
-                                                                const TextStyle(
-                                                              color: Colors
-                                                                  .black54,
-                                                              fontSize: 14,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                // Transaction Details
-                                                ...transactions
-                                                    .map((transaction) {
-                                                  final credit =
-                                                      transaction['credit']
-                                                          as double;
-                                                  final paid =
-                                                      transaction['paid']
-                                                          as double;
-                                                  final modeOfPayment =
-                                                      transaction[
-                                                              'mode_of_payment']
-                                                          as String;
-                                                  return Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            left: 56,
-                                                            bottom: 4),
-                                                    child: Text(
-                                                      'Credit: ₹${credit.toStringAsFixed(2)}, Paid: ₹${paid.toStringAsFixed(2)}, Mode: $modeOfPayment',
-                                                      style: const TextStyle(
-                                                        color: Colors.black54,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  );
-                                                }).toList(),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
                                       ],
                                     ),
+                                  )
+                                : ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: transactionsByDateAndUser.length,
+                                    itemBuilder: (context, index) {
+                                      final date = transactionsByDateAndUser
+                                          .keys
+                                          .toList()
+                                        ..sort((a, b) => b.compareTo(a));
+                                      final currentDate = date[index];
+                                      final userTransactions =
+                                          transactionsByDateAndUser[
+                                              currentDate]!;
+                                      final dailyCreditTotal =
+                                          dailyCreditTotals[currentDate] ?? 0.0;
+                                      final dailyPaidTotal =
+                                          dailyPaidTotals[currentDate] ?? 0.0;
+
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 12),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.1),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    DateFormat('d MMMM yyyy')
+                                                        .format(currentDate),
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    'Total Credit: ₹${dailyCreditTotal.toStringAsFixed(0)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.red,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'Total Paid: ₹${dailyPaidTotal.toStringAsFixed(0)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.green,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const Divider(height: 20),
+                                              ...userTransactions.entries
+                                                  .map((entry) {
+                                                final userName = entry.key;
+                                                final creditTotal =
+                                                    creditTotalsByDateAndUser[
+                                                            currentDate]![
+                                                        userName]!;
+                                                final paidTotal =
+                                                    paidTotalsByDateAndUser[
+                                                            currentDate]![
+                                                        userName]!;
+
+                                                return Padding(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 6),
+                                                  child: Row(
+                                                    children: [
+                                                      Container(
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          border: Border.all(
+                                                              color: Colors
+                                                                  .black54,
+                                                              width: 1.5),
+                                                        ),
+                                                        child:
+                                                            const CircleAvatar(
+                                                          radius: 18,
+                                                          backgroundColor:
+                                                              Colors.grey,
+                                                          child: Icon(
+                                                              Icons.person,
+                                                              color: Colors
+                                                                  .black54,
+                                                              size: 18),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              userName,
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 15,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: Colors
+                                                                    .black87,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                                height: 4),
+                                                            Text(
+                                                              'Credit: ₹${creditTotal.toStringAsFixed(2)}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 13,
+                                                                color:
+                                                                    Colors.red,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              'Paid: ₹${paidTotal.toStringAsFixed(2)}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 13,
+                                                                color: Colors
+                                                                    .green,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                ),
-                              );
-                            },
-                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

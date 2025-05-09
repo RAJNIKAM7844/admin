@@ -1,5 +1,6 @@
 import 'package:admin_eggs/customers/customer_detail_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DriverCustomersScreen extends StatefulWidget {
@@ -20,8 +21,8 @@ class DriverCustomersScreen extends StatefulWidget {
 
 class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
   final supabase = Supabase.instance.client;
-  List<dynamic> customers = [];
-  List<dynamic> filteredCustomers = [];
+  List<Map<String, dynamic>> customers = [];
+  List<Map<String, dynamic>> filteredCustomers = [];
   TextEditingController searchController = TextEditingController();
   bool isLoading = false;
 
@@ -36,17 +37,43 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
       isLoading = true;
     });
     try {
-      print('Fetching customers for area: ${widget.areaName}'); // Debug
+      print('Fetching customers for area: ${widget.areaName}');
+      // Fetch customer data
       final response = await supabase
           .from('users')
           .select('id, full_name, location, phone, profile_image, shop_image')
           .eq('location', widget.areaName)
           .order('full_name');
-      print('Customers response: $response'); // Debug response
+
+      // Fetch transactions and calculate credit balance for each customer
+      List<Map<String, dynamic>> customerList = [];
+      for (var user in response) {
+        final userId = user['id'].toString();
+        double creditBalance = 0.0;
+
+        // Fetch transactions for the user and driver
+        final transactionsResponse = await supabase
+            .from('transactions')
+            .select('credit, paid')
+            .eq('user_id', userId)
+            .eq('driver_id', widget.driverId);
+
+        // Calculate credit balance: sum(credit) - sum(paid)
+        creditBalance = transactionsResponse.fold(0.0,
+                (sum, t) => sum + (t['credit'] as num? ?? 0.0).toDouble()) -
+            transactionsResponse.fold(
+                0.0, (sum, t) => sum + (t['paid'] as num? ?? 0.0).toDouble());
+
+        // Add credit balance to customer data
+        customerList.add({
+          ...user,
+          'credit_balance': creditBalance,
+        });
+      }
 
       setState(() {
-        customers = response;
-        filteredCustomers = response;
+        customers = customerList;
+        filteredCustomers = customerList;
         isLoading = false;
       });
     } catch (e) {
@@ -79,12 +106,9 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF1A0841),
-              Color(0xFF3B322C),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
@@ -97,70 +121,82 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back,
+                          color: Colors.white, size: 24),
                       onPressed: () => Navigator.pop(context),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '${widget.driverName} - ${widget.areaName}',
-                        style: const TextStyle(
+                        style: GoogleFonts.roboto(
                           color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // Search bar
+              // Search Bar
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: TextField(
                     controller: searchController,
                     onChanged: filterCustomers,
-                    style: const TextStyle(color: Colors.black87),
+                    style:
+                        GoogleFonts.roboto(color: Colors.white, fontSize: 15),
                     decoration: InputDecoration(
                       hintText: 'Search by name or location',
-                      hintStyle: TextStyle(color: Colors.grey.shade600),
+                      hintStyle: GoogleFonts.roboto(
+                          color: Colors.white.withOpacity(0.5)),
                       border: InputBorder.none,
-                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      prefixIcon: Icon(Icons.search,
+                          color: Colors.white.withOpacity(0.7)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
                     ),
                   ),
                 ),
               ),
-
-              const SizedBox(height: 8),
-
-              // Customer list
+              const SizedBox(height: 12),
+              // Customer List
               Expanded(
                 child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          valueColor:
+                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
                     : filteredCustomers.isEmpty
                         ? Center(
                             child: Text(
                               widget.areaName == 'No area assigned'
                                   ? 'No area assigned to this driver.'
                                   : 'No customers found in this area.',
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 18),
+                              style: GoogleFonts.roboto(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -170,15 +206,12 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                               final customer = filteredCustomers[index];
                               final imageUrl = customer['profile_image'] ?? '';
                               return Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.only(bottom: 12),
                                 child: Material(
-                                  color: const Color(0xFF3B322C),
-                                  borderRadius: BorderRadius.circular(16),
-                                  elevation: 3,
-                                  shadowColor: Colors.black87,
+                                  color: Colors.transparent,
                                   child: InkWell(
-                                    borderRadius: BorderRadius.circular(16),
-                                    splashColor: Colors.white24,
+                                    borderRadius: BorderRadius.circular(12),
+                                    splashColor: Colors.white.withOpacity(0.3),
                                     onTap: () {
                                       Navigator.push(
                                         context,
@@ -191,48 +224,62 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                                             profileImageUrl: imageUrl,
                                             shopImageUrl:
                                                 customer['shop_image'] ?? '',
+                                            driverId: widget
+                                                .driverId, // Pass driverId
                                           ),
                                         ),
                                       );
                                     },
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12, horizontal: 16),
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color:
+                                                Colors.white.withOpacity(0.2)),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
                                       child: Row(
                                         children: [
                                           Container(
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
                                               border: Border.all(
-                                                  color: Colors.white70,
-                                                  width: 2),
+                                                  color: Colors.white,
+                                                  width: 1.5),
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: Colors.black
-                                                      .withOpacity(0.6),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 3),
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 2),
                                                 ),
                                               ],
                                             ),
                                             child: CircleAvatar(
-                                              radius: 26,
+                                              radius: 22,
                                               backgroundColor:
-                                                  Colors.grey.shade300,
+                                                  Colors.grey.shade200,
                                               backgroundImage:
                                                   imageUrl.isNotEmpty
                                                       ? NetworkImage(imageUrl)
                                                       : null,
                                               child: imageUrl.isEmpty
-                                                  ? const Icon(
-                                                      Icons.person,
+                                                  ? const Icon(Icons.person,
                                                       color: Colors.black54,
-                                                      size: 28,
-                                                    )
+                                                      size: 22)
                                                   : null,
                                             ),
                                           ),
-                                          const SizedBox(width: 20),
+                                          const SizedBox(width: 12),
                                           Expanded(
                                             child: Column(
                                               crossAxisAlignment:
@@ -241,28 +288,39 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                                                 Text(
                                                   customer['full_name'] ??
                                                       'Unknown',
-                                                  style: const TextStyle(
+                                                  style: GoogleFonts.roboto(
                                                     color: Colors.white,
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
                                                 const SizedBox(height: 6),
                                                 Text(
                                                   customer['location'] ?? '-',
-                                                  style: TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 14,
+                                                  style: GoogleFonts.roboto(
+                                                    color: Colors.white
+                                                        .withOpacity(0.7),
+                                                    fontSize: 13,
                                                     fontWeight: FontWeight.w400,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  'Credit Balance: ₹${(customer['credit_balance'] as double).toStringAsFixed(2)}',
+                                                  style: GoogleFonts.roboto(
+                                                    color: Colors.redAccent,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
                                               ],
                                             ),
                                           ),
-                                          const Icon(
+                                          Icon(
                                             Icons.arrow_forward_ios,
-                                            color: Colors.white70,
-                                            size: 18,
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            size: 16,
                                           ),
                                         ],
                                       ),
