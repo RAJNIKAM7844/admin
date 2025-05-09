@@ -83,7 +83,8 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
       final usersResponse = await supabase
           .from('users')
           .select('id, full_name, location')
-          .eq('location', areaName);
+          .eq('location', areaName)
+          .eq('role', 'customer'); // Added role filter
 
       List<Map<String, dynamic>> users =
           List<Map<String, dynamic>>.from(usersResponse);

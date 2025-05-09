@@ -19,7 +19,7 @@ class _VipUpdateTransactionScreenState
   List<Map<String, dynamic>> users = [];
   List<Map<String, dynamic>> transactions = [];
   String? selectedUserId;
-  int? editingTransactionId;
+  String? editingTransactionId; // Changed from int? to String?
   DateTime? startDate;
   DateTime? endDate;
   String? selectedModeOfPayment;
@@ -152,7 +152,7 @@ class _VipUpdateTransactionScreenState
 
       // Apply filters
       if (selectedUserId != null && selectedUserId!.isNotEmpty) {
-        query = query.eq('user_id', int.parse(selectedUserId!));
+        query = query.eq('user_id', selectedUserId!);
       }
       if (startDate != null) {
         query = query.gte('date', startDate!.toIso8601String());
@@ -193,6 +193,13 @@ class _VipUpdateTransactionScreenState
           .showSnackBar(SnackBar(content: Text(message)));
       print(
           'PostgrestException in _fetchTransactions: $e, Details: ${e.details}');
+    } on FormatException catch (e) {
+      setState(() {
+        errorMessage = 'Invalid user ID format: $e';
+        isLoadingTransactions = false;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Invalid user ID format: $e')));
     } catch (e) {
       setState(() {
         errorMessage = 'Unexpected error fetching transactions: $e';
@@ -223,7 +230,7 @@ class _VipUpdateTransactionScreenState
       final modeOfPayment = selectedPaymentMode;
 
       final transactionData = {
-        'user_id': int.parse(selectedUserId!),
+        'user_id': selectedUserId!,
         'date': DateTime.now().toIso8601String(),
         'credit': credit,
         'paid': paid,
@@ -283,7 +290,8 @@ class _VipUpdateTransactionScreenState
     }
   }
 
-  Future<void> _deleteTransaction(int id) async {
+  Future<void> _deleteTransaction(String id) async {
+    // Changed from int to String
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -343,7 +351,7 @@ class _VipUpdateTransactionScreenState
 
   void _editTransaction(Map<String, dynamic> transaction) {
     setState(() {
-      editingTransactionId = transaction['id'];
+      editingTransactionId = transaction['id'].toString(); // Ensure string
       selectedUserId = transaction['user_id'].toString();
       final credit = transaction['credit'] as num;
       final trays = (credit / (eggRate * 30)).round();

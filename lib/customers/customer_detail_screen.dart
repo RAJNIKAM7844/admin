@@ -20,6 +20,7 @@ class CustomerDetailScreen extends StatefulWidget {
     required this.shopImageUrl,
     this.driverId,
     this.schema = 'public',
+    required String userId,
   });
 
   @override

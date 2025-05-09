@@ -72,7 +72,8 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
       final usersResponse = await supabase
           .from('users')
           .select('id, full_name')
-          .eq('location', areaName);
+          .eq('location', areaName)
+          .eq('role', 'customer'); // Added role filter
 
       final users = List<Map<String, dynamic>>.from(usersResponse);
       userIdToName.clear();

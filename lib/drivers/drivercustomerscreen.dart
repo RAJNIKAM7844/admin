@@ -38,11 +38,12 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
     });
     try {
       print('Fetching customers for area: ${widget.areaName}');
-      // Fetch customer data
+      // Fetch customer data with role = 'customer'
       final response = await supabase
           .from('users')
           .select('id, full_name, location, phone, profile_image, shop_image')
           .eq('location', widget.areaName)
+          .eq('role', 'customer') // Added role filter
           .order('full_name');
 
       // Fetch transactions and calculate credit balance for each customer
@@ -224,8 +225,8 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                                             profileImageUrl: imageUrl,
                                             shopImageUrl:
                                                 customer['shop_image'] ?? '',
-                                            driverId: widget
-                                                .driverId, // Pass driverId
+                                            driverId: widget.driverId,
+                                            userId: customer['id'].toString(),
                                           ),
                                         ),
                                       );

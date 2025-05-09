@@ -29,6 +29,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       final userResponse = await supabase
           .from('users')
           .select('id, full_name, location, phone, profile_image, shop_image')
+          .eq('role', 'customer') // Filter for role = 'customer'
           .order('full_name');
 
       List<Map<String, dynamic>> customerList = [];
@@ -102,6 +103,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     area: customer['location'] ?? '-',
                     profileImageUrl: imageUrl,
                     shopImageUrl: customer['shop_image'] ?? '',
+                    userId: '',
                   ),
                 ),
               );

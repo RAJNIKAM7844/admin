@@ -1,4 +1,4 @@
-import 'package:admin_eggs/customers/customer_detail_screen.dart';
+import 'package:admin_eggs/vip/customer_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -100,16 +100,18 @@ class _VipCustomersScreenState extends State<VipCustomersScreen> {
             borderRadius: BorderRadius.circular(12),
             splashColor: Colors.white.withOpacity(0.3),
             onTap: () {
+              print(
+                  'Navigating to VipCustomerDetailScreen for user_id: ${customer['id']}');
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CustomerDetailScreen(
+                  builder: (_) => VipCustomerDetailScreen(
                     name: customer['full_name'] ?? 'Unknown',
                     number: customer['phone'] ?? 'N/A',
                     area: customer['location'] ?? '-',
                     profileImageUrl: imageUrl,
                     shopImageUrl: customer['shop_image'] ?? '',
-                    schema: 'public',
+                    userId: customer['id'].toString(),
                   ),
                 ),
               );
@@ -218,7 +220,7 @@ class _VipCustomersScreenState extends State<VipCustomersScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Customer Details',
+                      'VIP Customer Details',
                       style: GoogleFonts.roboto(
                         color: Colors.white,
                         fontSize: 22,

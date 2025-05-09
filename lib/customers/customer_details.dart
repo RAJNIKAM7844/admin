@@ -1,194 +1,370 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
-void main() {
-  runApp(const MaterialApp(
-    home: CustomerDetailsScreen(),
-    debugShowCheckedModeBanner: false,
-  ));
-}
-
-class Customer {
+class CustomerDetailScreen extends StatefulWidget {
   final String name;
-  final String address;
+  final String number;
+  final String area;
+  final String profileImageUrl;
+  final String shopImageUrl;
+  final int? driverId;
+  final String schema;
 
-  Customer(this.name, this.address);
-}
-
-class CustomerDetailsScreen extends StatefulWidget {
-  const CustomerDetailsScreen({super.key});
+  const CustomerDetailScreen({
+    super.key,
+    required this.name,
+    required this.number,
+    required this.area,
+    required this.profileImageUrl,
+    required this.shopImageUrl,
+    this.driverId,
+    this.schema = 'public',
+    required String userId,
+  });
 
   @override
-  State<CustomerDetailsScreen> createState() => _CustomerDetailsScreenState();
+  State<CustomerDetailScreen> createState() => _CustomerDetailScreenState();
 }
 
-class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
-  List<Customer> allCustomers = [
-    Customer("Customer 1", "Nayandalli"),
-    Customer("Customer 2", "Nayandalli"),
-    Customer("Customer 3", "Nayandalli"),
-    Customer("Customer 4", "Nayandalli"),
-    Customer("Ravi Kumar", "BTM Layout"),
-    Customer("Sneha", "Indiranagar"),
-  ];
+class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
+  final supabase = Supabase.instance.client;
+  List<Map<String, dynamic>> transactions = [];
+  bool isLoading = false;
+  double creditBalance = 0.0;
 
-  String query = "";
+  @override
+  void initState() {
+    super.initState();
+    _loadTransactions();
+    _setupRealtimeSubscription();
+  }
+
+  Future<void> _loadTransactions() async {
+    setState(() => isLoading = true);
+    try {
+      final userTable = widget.schema == 'public'
+          ? 'users'
+          : 'wholesale_users.wholesale_users';
+      final userResponse = await supabase
+          .from(userTable)
+          .select('id')
+          .eq('full_name', widget.name)
+          .eq('phone', widget.number)
+          .limit(1)
+          .maybeSingle();
+
+      if (userResponse == null || userResponse['id'] == null) {
+        throw Exception('Customer not found');
+      }
+      final userId = userResponse['id'].toString();
+
+      final transactionTable = widget.schema == 'public'
+          ? 'transactions'
+          : 'wholesale_users.wholesale_transactions';
+      final query = supabase.from(transactionTable).select(
+          widget.schema == 'public'
+              ? 'credit, paid, date, mode_of_payment, drivers!left(driver_name)'
+              : 'amount, created_at');
+
+      final transactionsResponse = widget.schema == 'public' &&
+              widget.driverId != null
+          ? await query
+              .eq('user_id', userId)
+              .eq('driver_id', widget.driverId!)
+              .order('date', ascending: false)
+          : await query
+              .eq(widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
+                  userId)
+              .order(widget.schema == 'public' ? 'date' : 'created_at',
+                  ascending: false);
+
+      setState(() {
+        transactions = transactionsResponse.map((t) {
+          String dateStr = widget.schema == 'public'
+              ? (t['date']?.toString() ?? DateTime.now().toIso8601String())
+              : (t['created_at']?.toString() ??
+                  DateTime.now().toIso8601String());
+          DateTime parsedDate;
+          try {
+            parsedDate = DateTime.parse(dateStr);
+          } catch (e) {
+            try {
+              parsedDate = DateFormat('MMM dd').parse(dateStr);
+              parsedDate = DateTime(
+                  DateTime.now().year, parsedDate.month, parsedDate.day);
+            } catch (e) {
+              print('Error parsing date $dateStr: $e');
+              parsedDate = DateTime.now();
+            }
+          }
+          if (widget.schema == 'public') {
+            return {
+              'date': parsedDate,
+              'credit': (t['credit'] as num?)?.toDouble() ?? 0.0,
+              'paid': (t['paid'] as num?)?.toDouble() ?? 0.0,
+              'mode_of_payment': t['mode_of_payment']?.toString() ?? 'N/A',
+              'driver_name':
+                  t['drivers']?['driver_name']?.toString() ?? 'Paid by User',
+            };
+          } else {
+            return {
+              'date': parsedDate,
+              'amount': (t['amount'] as num?)?.toDouble() ?? 0.0,
+              'mode_of_payment': 'N/A',
+              'driver_name': 'N/A',
+            };
+          }
+        }).toList();
+
+        if (widget.schema == 'public') {
+          creditBalance =
+              transactions.fold(0.0, (sum, t) => sum + t['credit']) -
+                  transactions.fold(0.0, (sum, t) => sum + t['paid']);
+        } else {
+          creditBalance = transactions.fold(0.0, (sum, t) => sum + t['amount']);
+        }
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching transactions: $e');
+      setState(() {
+        transactions = [];
+        creditBalance = 0.0;
+        isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load transactions: $e')),
+      );
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    final transactionTable =
+        widget.schema == 'public' ? 'transactions' : 'wholesale_transactions';
+    final channelName =
+        'customer_transactions_${widget.name}_${widget.number}_${widget.schema}';
+    supabase
+        .channel(channelName)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: widget.schema,
+          table: transactionTable,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
+            value: (supabase
+                    .from(widget.schema == 'public'
+                        ? 'users'
+                        : 'wholesale_users.wholesale_users')
+                    .select('id')
+                    .eq('full_name', widget.name)
+                    .eq('phone', widget.number)
+                    .limit(1)
+                    .maybeSingle())
+                .then((res) => res?['id']?.toString() ?? ''),
+          ),
+          callback: (payload) {
+            print('Real-time transaction update for customer: $payload');
+            _loadTransactions();
+          },
+        )
+        .subscribe();
+  }
+
+  void _showImageDialog(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: InteractiveViewer(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(imageUrl, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    supabase
+        .channel(
+            'customer_transactions_${widget.name}_${widget.number}_${widget.schema}')
+        .unsubscribe();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    List<Customer> filteredCustomers = allCustomers.where((customer) {
-      final lowerQuery = query.toLowerCase();
-      return customer.name.toLowerCase().contains(lowerQuery) ||
-          customer.address.toLowerCase().contains(lowerQuery);
-    }).toList();
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            height: 200,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF2A2A2A), Color(0xFF4C4A3F)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-            ),
-            padding: const EdgeInsets.only(top: 40, left: 16, right: 16),
-            child: Row(
+      body: Container(
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0D0221), Color(0xFF2A1B3D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                  child: const CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.white,
-                    child:
-                        Icon(Icons.arrow_back, color: Colors.black, size: 20),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Row(
                   children: [
-                    const SizedBox(height: 16),
-                    Text(
-                      "Customer",
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white.withOpacity(0.9),
-                        letterSpacing: 0.5,
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
                     ),
+                    const SizedBox(width: 8),
                     Text(
-                      "Details",
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.7),
+                      widget.schema == 'public'
+                          ? 'Customer Details'
+                          : 'VIP Customer Details',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildImageAvatar(widget.profileImageUrl, 'Profile'),
+                      const SizedBox(width: 16),
+                      _buildImageAvatar(widget.shopImageUrl, 'Shop'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _infoCard(
+                  icon: Icons.person_outline,
+                  label: 'Name',
+                  value: widget.name,
+                ),
+                const SizedBox(height: 16),
+                _infoCard(
+                  icon: Icons.phone_outlined,
+                  label: 'Phone',
+                  value: widget.number,
+                ),
+                const SizedBox(height: 16),
+                _infoCard(
+                  icon: Icons.location_on_outlined,
+                  label: 'Area',
+                  value: widget.area,
+                ),
+                const SizedBox(height: 32),
+                _buildBalanceCard(),
+                const SizedBox(height: 24),
+                Text(
+                  widget.schema == 'public' && widget.driverId != null
+                      ? 'Driver-Specific Transactions'
+                      : widget.schema == 'public'
+                          ? 'All Transactions'
+                          : 'VIP Transactions',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                else if (transactions.isEmpty)
+                  const Center(
+                    child: Text(
+                      'No transactions found.',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: transactions.length,
+                    itemBuilder: (context, index) {
+                      final transaction = transactions[index];
+                      return _buildTransactionCard(transaction);
+                    },
+                  ),
               ],
             ),
           ),
-          Expanded(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF150C3D), Color(0xFF1C2526)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Column(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          query = value;
-                        });
-                      },
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Search by name or address',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.5)),
-                        border: InputBorder.none,
-                        prefixIcon: Icon(Icons.search, color: Colors.white70),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: filteredCustomers.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No customers found',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: filteredCustomers.length,
-                            itemBuilder: (context, index) {
-                              final customer = filteredCustomers[index];
-                              return CustomerTile(
-                                name: customer.name,
-                                address: customer.address,
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
-}
 
-class CustomerTile extends StatelessWidget {
-  final String name;
-  final String address;
+  Widget _buildImageAvatar(String imageUrl, String type) {
+    return GestureDetector(
+      onTap: () => _showImageDialog(context, imageUrl),
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: CircleAvatar(
+          radius: 50,
+          backgroundImage: NetworkImage(imageUrl),
+          backgroundColor: Colors.grey.shade200,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              width: 100,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              color: Colors.black54,
+              child: Text(
+                type,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-  const CustomerTile({
-    super.key,
-    required this.name,
-    required this.address,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _infoCard({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
@@ -198,36 +374,121 @@ class CustomerTile extends StatelessWidget {
           ),
         ],
       ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white70, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            '$label:',
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            widget.schema == 'public' ? 'Credit Balance:' : 'Total Collection:',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          Text(
+            '₹${creditBalance.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: creditBalance >= 0 ? Colors.red : Colors.green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionCard(Map<String, dynamic> transaction) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          radius: 20,
-          backgroundColor: const Color(0xFF4C4A3F),
-          child: Icon(Icons.person, color: Colors.white, size: 20),
-        ),
         title: Text(
-          name,
+          'Date: ${DateFormat('MMM dd, yyyy').format(transaction['date'])}',
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 16,
-            color: Colors.white,
+            color: Colors.black87,
           ),
         ),
-        subtitle: Text(
-          address,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
-            fontSize: 14,
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Source: ${transaction['driver_name']}',
+                style: const TextStyle(color: Colors.black54, fontSize: 14),
+              ),
+              const SizedBox(height: 4),
+              if (widget.schema == 'public') ...[
+                Text(
+                  'Credit: ₹${transaction['credit'].toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                ),
+                Text(
+                  'Paid: ₹${transaction['paid'].toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.green, fontSize: 14),
+                ),
+              ] else
+                Text(
+                  'Amount: ₹${transaction['amount'].toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                ),
+              Text(
+                'Mode: ${transaction['mode_of_payment']}',
+                style: const TextStyle(color: Colors.black54, fontSize: 14),
+              ),
+            ],
           ),
         ),
-        trailing: Icon(
-          Icons.arrow_forward_ios,
-          size: 16,
-          color: Colors.white.withOpacity(0.7),
-        ),
-        onTap: () {
-          // Add navigation or detail logic here
-        },
+        trailing: const Icon(Icons.receipt, color: Colors.blueGrey),
       ),
     );
   }
