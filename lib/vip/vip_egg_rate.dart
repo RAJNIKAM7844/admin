@@ -16,6 +16,7 @@ class _VipUpdateRatePageState extends State<VipUpdateRatePage> {
   bool isLoading = false;
   String? errorMessage;
   double? currentRate;
+  String? currentRateId; // Store the ID of the current rate record
 
   @override
   void initState() {
@@ -27,14 +28,19 @@ class _VipUpdateRatePageState extends State<VipUpdateRatePage> {
     try {
       final response = await supabase
           .from('wholesale_eggrate')
-          .select('rate')
+          .select('id, rate')
           .order('updated_at', ascending: false)
           .limit(1)
           .maybeSingle();
       if (response != null) {
         setState(() {
+          currentRateId = response['id']?.toString();
           currentRate = (response['rate'] as num?)?.toDouble();
           _rateController.text = currentRate?.toStringAsFixed(2) ?? '';
+        });
+      } else {
+        setState(() {
+          errorMessage = 'No existing rate found.';
         });
       }
     } on PostgrestException catch (e) {
@@ -74,10 +80,14 @@ class _VipUpdateRatePageState extends State<VipUpdateRatePage> {
       if (newRate == null || newRate <= 0) {
         throw Exception('Please enter a valid positive rate');
       }
-      await supabase.from('wholesale_eggrate').insert({
+      if (currentRateId == null) {
+        throw Exception('No existing rate record found to update');
+      }
+      // Update the existing record
+      await supabase.from('wholesale_eggrate').update({
         'rate': newRate,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }).eq('id', currentRateId!);
       setState(() {
         currentRate = newRate;
         isLoading = false;
