@@ -363,8 +363,7 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
                                   ),
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
-                                  disabledBackgroundColor:
-                                      Colors.grey.withOpacity(0.5),
+                                  disabledBackgroundColor: Colors.transparent,
                                 ),
                                 child: Container(
                                   decoration: BoxDecoration(
@@ -388,7 +387,7 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white.withOpacity(0.9),
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),

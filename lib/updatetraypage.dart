@@ -322,42 +322,50 @@ class _UpdateTrayPageState extends State<UpdateTrayPage> {
                                       _updateTrayQuantity();
                                     },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12, horizontal: 20),
+                                backgroundColor: Colors
+                                    .transparent, // Transparent button background
+                                padding: EdgeInsets
+                                    .zero, // No padding to interfere with the container
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: const BorderSide(color: Colors.grey),
+                                  borderRadius: BorderRadius.circular(
+                                      12), // Rounded corners
                                 ),
-                                minimumSize: const Size(double.infinity, 50),
+                                minimumSize: const Size(
+                                    double.infinity, 50), // Full-width button
                               ),
-                              child: Container(
+                              child: Ink(
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
                                     colors: [
-                                      Color(0xFFE91E63),
-                                      Color(0xFF4CAF50)
+                                      Color(0xFFE91E63), // Start color (pink)
+                                      Color(0xFF4CAF50), // End color (green)
                                     ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                   ),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(
+                                      12), // Match button's border radius
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12, horizontal: 20),
-                                child: _isLoading
-                                    ? const CircularProgressIndicator(
-                                        color: Colors.white)
-                                    : Text(
-                                        'Update Quantity',
-                                        style: GoogleFonts.roboto(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 20),
+                                  child: _isLoading
+                                      ? const CircularProgressIndicator(
+                                          color: Colors
+                                              .white, // Loading spinner color
+                                        )
+                                      : Text(
+                                          'Update Quantity',
+                                          style: GoogleFonts.roboto(
+                                            color: Colors.white, // Text color
+                                            fontSize: 15, // Font size
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      ),
+                                ),
                               ),
-                            ),
+                            )
                           ],
                         ),
                       ),

@@ -261,7 +261,7 @@ class _ManageAreasScreenState extends State<ManageAreasScreen> {
                       shadowColor: Colors.transparent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        side: BorderSide(color: Colors.transparent),
                       ),
                     ),
                     child: Container(

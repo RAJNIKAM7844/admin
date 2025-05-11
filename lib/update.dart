@@ -142,15 +142,10 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
                 ),
                 SliverToBoxAdapter(
                   child: Container(
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height -
-                          kToolbarHeight -
-                          MediaQuery.of(context).padding.top,
-                    ),
                     padding: const EdgeInsets.all(16),
                     child: Card(
                       elevation: 0,
-                      color: Colors.transparent,
+                      color: const Color.fromARGB(255, 0, 26, 255),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(color: Colors.white.withOpacity(0.2)),
@@ -167,28 +162,28 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Set New Egg Rate',
                               style: GoogleFonts.roboto(
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             Text(
                               'Enter the new rate per egg (₹)',
                               style: GoogleFonts.roboto(
-                                fontSize: 14,
+                                fontSize: 13,
                                 color: Colors.white.withOpacity(0.7),
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             Container(
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.1),
@@ -228,11 +223,11 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
                                       color: Colors.red, fontSize: 13),
                                   border: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 12),
+                                      horizontal: 16, vertical: 10),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             ElevatedButton(
                               onPressed: _isLoading
                                   ? null
@@ -241,36 +236,43 @@ class _UpdateRatePageState extends State<UpdateRatePage> {
                                       _updateEggRate();
                                     },
                               style: ElevatedButton.styleFrom(
-                                minimumSize: const Size(double.infinity, 50),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                backgroundColor: Colors.transparent,
+                                minimumSize: const Size(double.infinity, 48),
+                                padding: EdgeInsets
+                                    .zero, // Ensure no padding interferes with the container
+                                backgroundColor: Colors
+                                    .transparent, // Transparent button background
                                 shadowColor: Colors.transparent,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  side: BorderSide(
-                                      color: Colors.white.withOpacity(0.2)),
                                 ),
                               ),
-                              child: Container(
+                              child: Ink(
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
                                     colors: [
-                                      Color(0xFFE91E63),
-                                      Color(0xFF4CAF50)
+                                      Color(0xFF4CAF50), // Start color (green)
+                                      Color(
+                                          0xFF087F23), // End color (darker green)
                                     ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                   ),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  'Update Rate',
-                                  style: GoogleFonts.roboto(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  constraints: const BoxConstraints(
+                                    minHeight: 48, // Match the button's height
+                                    minWidth: double
+                                        .infinity, // Match the button's width
+                                  ),
+                                  child: Text(
+                                    'Update Rate',
+                                    style: GoogleFonts.roboto(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ),
