@@ -34,6 +34,8 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
   @override
   void initState() {
     super.initState();
+    print(
+        'Initializing CalendarSelectionScreen with driverId: ${widget.driverId}, driverName: ${widget.driverName}');
     if (_selectedTabIndex == 1) {
       fetchTodayCollections();
     }
@@ -45,52 +47,35 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
       isLoading = true;
     });
     try {
-      final driverResponse = await supabase
-          .from('drivers')
-          .select('area_id')
-          .eq('id', widget.driverId)
-          .limit(1)
-          .maybeSingle();
+      print('Fetching today\'s collections for driver ID: ${widget.driverId}');
 
-      if (driverResponse == null || driverResponse['area_id'] == null) {
-        throw Exception('No area assigned to driver ID ${widget.driverId}');
-      }
-      final areaId = driverResponse['area_id'];
-
-      final areaResponse = await supabase
-          .from('delivery_areas')
-          .select('area_name')
-          .eq('id', areaId)
-          .limit(1)
-          .maybeSingle();
-
-      if (areaResponse == null || areaResponse['area_name'] == null) {
-        throw Exception('Area not found for area ID $areaId');
-      }
-      final areaName = areaResponse['area_name'];
-
+      // Fetch users (without area filtering to simplify)
       final usersResponse = await supabase
           .from('users')
           .select('id, full_name')
-          .eq('location', areaName)
-          .eq('role', 'customer'); // Added role filter
+          .eq('role', 'customer');
+      print('Users response: $usersResponse');
 
-      final users = List<Map<String, dynamic>>.from(usersResponse);
       userIdToName.clear();
-      for (var user in users) {
+      for (var user in usersResponse) {
         userIdToName[user['id'].toString()] = user['full_name'];
       }
+      print('User ID to Name mapping: $userIdToName');
 
+      // Define today's date range
       final today = DateTime.now();
       final startDate = DateTime(today.year, today.month, today.day);
       final endDate = DateTime(today.year, today.month, today.day, 23, 59, 59);
+      print('Date range: $startDate to $endDate');
 
+      // Fetch transactions for today
       final transactionsResponse = await supabase
           .from('transactions')
           .select('user_id, credit, paid, date, mode_of_payment')
           .eq('driver_id', widget.driverId)
           .gte('date', startDate.toIso8601String())
           .lte('date', endDate.toIso8601String());
+      print('Transactions response: $transactionsResponse');
 
       double tempCreditTotal = 0.0;
       double tempPaidTotal = 0.0;
@@ -98,22 +83,26 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
 
       for (var transaction in transactionsResponse) {
         final userId = transaction['user_id'].toString();
-        if (!userIdToName.containsKey(userId)) {
-          continue;
-        }
         final credit = (transaction['credit'] as num?)?.toDouble() ?? 0.0;
         final paid = (transaction['paid'] as num?)?.toDouble() ?? 0.0;
+        final date = transaction['date'] != null
+            ? DateTime.parse(transaction['date']).toLocal()
+            : DateTime.now();
+        final modeOfPayment =
+            transaction['mode_of_payment']?.toString() ?? 'N/A';
+
+        final userName = userIdToName[userId] ?? 'Customer $userId';
+        print(
+            'Processing transaction for user $userId ($userName): Credit $credit, Paid $paid');
+
         tempCreditTotal += credit;
         tempPaidTotal += paid;
         tempTransactions.add({
-          'user_name': userIdToName[userId] ?? 'Customer $userId',
+          'user_name': userName,
           'credit': credit,
           'paid': paid,
-          'date': transaction['date'] != null
-              ? DateTime.parse(transaction['date']).toLocal()
-              : DateTime.now(),
-          'mode_of_payment':
-              transaction['mode_of_payment']?.toString() ?? 'N/A',
+          'date': date,
+          'mode_of_payment': modeOfPayment,
         });
       }
 
@@ -123,8 +112,10 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
         todayTransactions = tempTransactions;
         isLoading = false;
       });
+      print('Today\'s transactions: $todayTransactions');
+      print('Total Credit: $todayCreditTotal, Total Paid: $todayPaidTotal');
     } catch (e, stackTrace) {
-      print('Error fetching collections: $e');
+      print('Error fetching today\'s collections: $e');
       print('Stack trace: $stackTrace');
       setState(() {
         todayCreditTotal = 0.0;
@@ -139,6 +130,8 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
   }
 
   void setupRealtimeSubscription() {
+    print(
+        'Setting up real-time subscription for driver_${widget.driverId}_today_collections');
     supabase
         .channel('driver_${widget.driverId}_today_collections')
         .onPostgresChanges(
@@ -146,6 +139,7 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
           schema: 'public',
           table: 'transactions',
           callback: (payload) {
+            print('Real-time update received: $payload');
             if (_selectedTabIndex == 1) {
               fetchTodayCollections();
             }
@@ -159,6 +153,7 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
       _selectedDate = selectedDay;
       _focusedDay = focusedDay;
     });
+    print('Selected date: $_selectedDate');
   }
 
   void _onTabChanged(int index) {
@@ -169,10 +164,12 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
         _selectedDate = null;
       }
     });
+    print('Tab changed to index: $index');
   }
 
   @override
   void dispose() {
+    print('Disposing CalendarSelectionScreen, unsubscribing channel');
     supabase
         .channel('driver_${widget.driverId}_today_collections')
         .unsubscribe();
@@ -339,6 +336,8 @@ class _CalendarSelectionScreenState extends State<CalendarSelectionScreen> {
                                 onPressed: _selectedDate == null
                                     ? null
                                     : () {
+                                        print(
+                                            'Navigating to CollectionDetailsScreen for date: $_selectedDate');
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(

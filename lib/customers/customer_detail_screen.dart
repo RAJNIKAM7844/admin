@@ -9,6 +9,7 @@ class CustomerDetailScreen extends StatefulWidget {
   final String profileImageUrl;
   final String shopImageUrl;
   final int? driverId;
+  final String userId; // Made userId required
   final String schema;
 
   const CustomerDetailScreen({
@@ -18,9 +19,9 @@ class CustomerDetailScreen extends StatefulWidget {
     required this.area,
     required this.profileImageUrl,
     required this.shopImageUrl,
+    required this.userId,
     this.driverId,
     this.schema = 'public',
-    required String userId,
   });
 
   @override
@@ -43,22 +44,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   Future<void> _loadTransactions() async {
     setState(() => isLoading = true);
     try {
-      final userTable = widget.schema == 'public'
-          ? 'users'
-          : 'wholesale_users.wholesale_users';
-      final userResponse = await supabase
-          .from(userTable)
-          .select('id')
-          .eq('full_name', widget.name)
-          .eq('phone', widget.number)
-          .limit(1)
-          .maybeSingle();
-
-      if (userResponse == null || userResponse['id'] == null) {
-        throw Exception('Customer not found');
-      }
-      final userId = userResponse['id'].toString();
-
+      final userId = widget.userId;
       final transactionTable = widget.schema == 'public'
           ? 'transactions'
           : 'wholesale_users.wholesale_transactions';
@@ -67,17 +53,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
               ? 'credit, paid, date, mode_of_payment, drivers!left(driver_name)'
               : 'amount, created_at');
 
-      final transactionsResponse = widget.schema == 'public' &&
-              widget.driverId != null
-          ? await query
-              .eq('user_id', userId)
-              .eq('driver_id', widget.driverId!)
-              .order('date', ascending: false)
-          : await query
-              .eq(widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
-                  userId)
-              .order(widget.schema == 'public' ? 'date' : 'created_at',
-                  ascending: false);
+      final transactionsResponse = await query
+          .eq(widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
+              userId)
+          // Uncomment below to filter by driver_id if driver-specific transactions are needed
+          // .eq('driver_id', widget.driverId!)
+          .order(widget.schema == 'public' ? 'date' : 'created_at',
+              ascending: false);
 
       setState(() {
         transactions = transactionsResponse.map((t) {
@@ -143,7 +125,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     final transactionTable =
         widget.schema == 'public' ? 'transactions' : 'wholesale_transactions';
     final channelName =
-        'customer_transactions_${widget.name}_${widget.number}_${widget.schema}';
+        'customer_transactions_${widget.userId}_${widget.schema}';
     supabase
         .channel(channelName)
         .onPostgresChanges(
@@ -153,16 +135,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
-            value: (supabase
-                    .from(widget.schema == 'public'
-                        ? 'users'
-                        : 'wholesale_users.wholesale_users')
-                    .select('id')
-                    .eq('full_name', widget.name)
-                    .eq('phone', widget.number)
-                    .limit(1)
-                    .maybeSingle())
-                .then((res) => res?['id']?.toString() ?? ''),
+            value: widget.userId,
           ),
           callback: (payload) {
             print('Real-time transaction update for customer: $payload');
@@ -190,8 +163,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   @override
   void dispose() {
     supabase
-        .channel(
-            'customer_transactions_${widget.name}_${widget.number}_${widget.schema}')
+        .channel('customer_transactions_${widget.userId}_${widget.schema}')
         .unsubscribe();
     super.dispose();
   }

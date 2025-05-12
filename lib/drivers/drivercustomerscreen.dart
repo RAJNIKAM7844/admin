@@ -38,39 +38,45 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
     });
     try {
       print('Fetching customers for area: ${widget.areaName}');
-      // Fetch customer data with role = 'customer'
+      print('Driver ID: ${widget.driverId}, Driver Name: ${widget.driverName}');
+
+      // Fetch customers based on areaName and role = 'customer'
       final response = await supabase
           .from('users')
           .select('id, full_name, location, phone, profile_image, shop_image')
           .eq('location', widget.areaName)
-          .eq('role', 'customer') // Added role filter
+          .eq('role', 'customer')
           .order('full_name');
 
-      // Fetch transactions and calculate credit balance for each customer
+      print('Customer fetch response: $response');
+
       List<Map<String, dynamic>> customerList = [];
       for (var user in response) {
         final userId = user['id'].toString();
         double creditBalance = 0.0;
 
-        // Fetch transactions for the user and driver
+        // Fetch transactions for credit_balance
         final transactionsResponse = await supabase
             .from('transactions')
             .select('credit, paid')
-            .eq('user_id', userId)
-            .eq('driver_id', widget.driverId);
+            .eq('user_id', userId);
+        // Uncomment below to filter by driver_id if driver-specific balance is needed
+        // .eq('driver_id', widget.driverId);
 
-        // Calculate credit balance: sum(credit) - sum(paid)
+        print('Transactions for user $userId: $transactionsResponse');
+
         creditBalance = transactionsResponse.fold(0.0,
                 (sum, t) => sum + (t['credit'] as num? ?? 0.0).toDouble()) -
             transactionsResponse.fold(
                 0.0, (sum, t) => sum + (t['paid'] as num? ?? 0.0).toDouble());
 
-        // Add credit balance to customer data
         customerList.add({
           ...user,
           'credit_balance': creditBalance,
         });
       }
+
+      print('Total customers fetched: ${customerList.length}');
 
       setState(() {
         customers = customerList;
@@ -78,6 +84,7 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
         isLoading = false;
       });
     } catch (e) {
+      print('Error fetching customers: $e');
       setState(() {
         customers = [];
         filteredCustomers = [];
@@ -115,7 +122,6 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Header
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -142,7 +148,6 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                   ],
                 ),
               ),
-              // Search Bar
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -178,7 +183,6 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Customer List
               Expanded(
                 child: isLoading
                     ? Center(
@@ -214,6 +218,8 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     splashColor: Colors.white.withOpacity(0.3),
                                     onTap: () {
+                                      print(
+                                          'Navigating to CustomerDetailScreen for user: ${customer['id']}');
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -337,5 +343,11 @@ class _DriverCustomersScreenState extends State<DriverCustomersScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 }
