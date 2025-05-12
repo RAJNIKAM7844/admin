@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CustomerDetailScreen extends StatefulWidget {
   final String name;
@@ -9,7 +10,7 @@ class CustomerDetailScreen extends StatefulWidget {
   final String profileImageUrl;
   final String shopImageUrl;
   final int? driverId;
-  final String userId; // Made userId required
+  final String userId;
   final String schema;
 
   const CustomerDetailScreen({
@@ -33,6 +34,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   List<Map<String, dynamic>> transactions = [];
   bool isLoading = false;
   double creditBalance = 0.0;
+  static const int pageSize = 20;
 
   @override
   void initState() {
@@ -41,7 +43,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     _setupRealtimeSubscription();
   }
 
-  Future<void> _loadTransactions() async {
+  Future<void> _loadTransactions({int offset = 0}) async {
     setState(() => isLoading = true);
     try {
       final userId = widget.userId;
@@ -56,30 +58,17 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       final transactionsResponse = await query
           .eq(widget.schema == 'public' ? 'user_id' : 'wholesale_user_id',
               userId)
-          // Uncomment below to filter by driver_id if driver-specific transactions are needed
-          // .eq('driver_id', widget.driverId!)
           .order(widget.schema == 'public' ? 'date' : 'created_at',
-              ascending: false);
+              ascending: false)
+          .range(offset, offset + pageSize - 1);
 
       setState(() {
         transactions = transactionsResponse.map((t) {
-          String dateStr = widget.schema == 'public'
+          final dateStr = widget.schema == 'public'
               ? (t['date']?.toString() ?? DateTime.now().toIso8601String())
               : (t['created_at']?.toString() ??
                   DateTime.now().toIso8601String());
-          DateTime parsedDate;
-          try {
-            parsedDate = DateTime.parse(dateStr);
-          } catch (e) {
-            try {
-              parsedDate = DateFormat('MMM dd').parse(dateStr);
-              parsedDate = DateTime(
-                  DateTime.now().year, parsedDate.month, parsedDate.day);
-            } catch (e) {
-              print('Error parsing date $dateStr: $e');
-              parsedDate = DateTime.now();
-            }
-          }
+          final parsedDate = _parseDate(dateStr);
           if (widget.schema == 'public') {
             return {
               'date': parsedDate,
@@ -121,6 +110,20 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     }
   }
 
+  DateTime _parseDate(String dateStr) {
+    try {
+      return DateTime.parse(dateStr);
+    } catch (e) {
+      try {
+        final parsedDate = DateFormat('MMM dd').parse(dateStr);
+        return DateTime(DateTime.now().year, parsedDate.month, parsedDate.day);
+      } catch (e) {
+        print('Error parsing date $dateStr: $e');
+        return DateTime.now();
+      }
+    }
+  }
+
   void _setupRealtimeSubscription() {
     final transactionTable =
         widget.schema == 'public' ? 'transactions' : 'wholesale_transactions';
@@ -138,11 +141,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             value: widget.userId,
           ),
           callback: (payload) {
-            print('Real-time transaction update for customer: $payload');
+            print('Real-time transaction update: $payload');
             _loadTransactions();
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+      if (error != null) {
+        print('Subscription error for transactions: $error');
+      }
+    });
   }
 
   void _showImageDialog(BuildContext context, String imageUrl) {
@@ -181,104 +188,107 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      widget.schema == 'public'
-                          ? 'Customer Details'
-                          : 'VIP Customer Details',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          child: RefreshIndicator(
+            onRefresh: _loadTransactions,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      _buildImageAvatar(widget.profileImageUrl, 'Profile'),
-                      const SizedBox(width: 16),
-                      _buildImageAvatar(widget.shopImageUrl, 'Shop'),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.schema == 'public'
+                            ? 'Customer Details'
+                            : 'VIP Customer Details',
+                        style: GoogleFonts.roboto(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 32),
-                _infoCard(
-                  icon: Icons.person_outline,
-                  label: 'Name',
-                  value: widget.name,
-                ),
-                const SizedBox(height: 16),
-                _infoCard(
-                  icon: Icons.phone_outlined,
-                  label: 'Phone',
-                  value: widget.number,
-                ),
-                const SizedBox(height: 16),
-                _infoCard(
-                  icon: Icons.location_on_outlined,
-                  label: 'Area',
-                  value: widget.area,
-                ),
-                const SizedBox(height: 32),
-                _buildBalanceCard(),
-                const SizedBox(height: 24),
-                Text(
-                  widget.schema == 'public' && widget.driverId != null
-                      ? 'Driver-Specific Transactions'
-                      : widget.schema == 'public'
-                          ? 'All Transactions'
-                          : 'VIP Transactions',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (isLoading)
-                  const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildImageAvatar(widget.profileImageUrl, 'Profile'),
+                        const SizedBox(width: 16),
+                        _buildImageAvatar(widget.shopImageUrl, 'Shop'),
+                      ],
                     ),
-                  )
-                else if (transactions.isEmpty)
-                  const Center(
-                    child: Text(
-                      'No transactions found.',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                  ),
+                  const SizedBox(height: 32),
+                  _infoCard(
+                    icon: Icons.person_outline,
+                    label: 'Name',
+                    value: widget.name,
+                  ),
+                  const SizedBox(height: 16),
+                  _infoCard(
+                    icon: Icons.phone_outlined,
+                    label: 'Phone',
+                    value: widget.number,
+                  ),
+                  const SizedBox(height: 16),
+                  _infoCard(
+                    icon: Icons.location_on_outlined,
+                    label: 'Area',
+                    value: widget.area,
+                  ),
+                  const SizedBox(height: 32),
+                  _buildBalanceCard(),
+                  const SizedBox(height: 24),
+                  Text(
+                    widget.schema == 'public' && widget.driverId != null
+                        ? 'Driver-Specific Transactions'
+                        : widget.schema == 'public'
+                            ? 'All Transactions'
+                            : 'VIP Transactions',
+                    style: GoogleFonts.roboto(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (isLoading)
+                    const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
+                    )
+                  else if (transactions.isEmpty)
+                    Center(
+                      child: Text(
+                        'No transactions found.',
+                        style: GoogleFonts.roboto(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: transactions.length,
+                      itemBuilder: (context, index) {
+                        final transaction = transactions[index];
+                        return _buildTransactionCard(transaction);
+                      },
                     ),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: transactions.length,
-                    itemBuilder: (context, index) {
-                      final transaction = transactions[index];
-                      return _buildTransactionCard(transaction);
-                    },
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -314,7 +324,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
               child: Text(
                 type,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: GoogleFonts.roboto(
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -352,7 +362,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           const SizedBox(width: 12),
           Text(
             '$label:',
-            style: const TextStyle(
+            style: GoogleFonts.roboto(
               fontWeight: FontWeight.w600,
               fontSize: 16,
               color: Colors.white70,
@@ -362,7 +372,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: GoogleFonts.roboto(
                 fontSize: 16,
                 color: Colors.white,
                 fontWeight: FontWeight.w500,
@@ -393,7 +403,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         children: [
           Text(
             widget.schema == 'public' ? 'Credit Balance:' : 'Total Collection:',
-            style: const TextStyle(
+            style: GoogleFonts.roboto(
               fontSize: 18,
               fontWeight: FontWeight.w700,
               color: Colors.black87,
@@ -401,7 +411,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           ),
           Text(
             '₹${creditBalance.toStringAsFixed(2)}',
-            style: TextStyle(
+            style: GoogleFonts.roboto(
               fontSize: 18,
               fontWeight: FontWeight.w700,
               color: creditBalance >= 0 ? Colors.red : Colors.green,
@@ -423,7 +433,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         title: Text(
           'Date: ${DateFormat('MMM dd, yyyy').format(transaction['date'])}',
-          style: const TextStyle(
+          style: GoogleFonts.roboto(
             fontWeight: FontWeight.w600,
             fontSize: 16,
             color: Colors.black87,
@@ -436,26 +446,26 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             children: [
               Text(
                 'Source: ${transaction['driver_name']}',
-                style: const TextStyle(color: Colors.black54, fontSize: 14),
+                style: GoogleFonts.roboto(color: Colors.black54, fontSize: 14),
               ),
               const SizedBox(height: 4),
               if (widget.schema == 'public') ...[
                 Text(
                   'Credit: ₹${transaction['credit'].toStringAsFixed(2)}',
-                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                  style: GoogleFonts.roboto(color: Colors.red, fontSize: 14),
                 ),
                 Text(
                   'Paid: ₹${transaction['paid'].toStringAsFixed(2)}',
-                  style: const TextStyle(color: Colors.green, fontSize: 14),
+                  style: GoogleFonts.roboto(color: Colors.green, fontSize: 14),
                 ),
               ] else
                 Text(
                   'Amount: ₹${transaction['amount'].toStringAsFixed(2)}',
-                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                  style: GoogleFonts.roboto(color: Colors.red, fontSize: 14),
                 ),
               Text(
                 'Mode: ${transaction['mode_of_payment']}',
-                style: const TextStyle(color: Colors.black54, fontSize: 14),
+                style: GoogleFonts.roboto(color: Colors.black54, fontSize: 14),
               ),
             ],
           ),
