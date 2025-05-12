@@ -20,27 +20,34 @@ class _CustomersScreenState extends State<CustomersScreen> {
   @override
   void initState() {
     super.initState();
+    print('Initializing CustomersScreen');
     fetchCustomers();
   }
 
   Future<void> fetchCustomers() async {
     setState(() => isLoading = true);
     try {
+      print('Fetching customers from users table');
       final userResponse = await supabase
           .from('users')
           .select('id, full_name, location, phone, profile_image, shop_image')
-          .eq('role', 'customer') // Filter for role = 'customer'
+          .eq('role', 'customer')
           .order('full_name');
+
+      print('User response: $userResponse');
 
       List<Map<String, dynamic>> customerList = [];
       for (var user in userResponse) {
         final userId = user['id'].toString();
         double creditBalance = 0.0;
 
+        print('Fetching transactions for userId: $userId');
         final transactionsResponse = await supabase
             .from('transactions')
             .select('credit, paid')
             .eq('user_id', userId);
+
+        print('Transactions for userId $userId: $transactionsResponse');
 
         creditBalance = transactionsResponse.fold(0.0,
                 (sum, t) => sum + (t['credit'] as num? ?? 0.0).toDouble()) -
@@ -58,7 +65,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         filteredCustomers = customerList;
         isLoading = false;
       });
+      print('Fetched ${customers.length} customers');
     } catch (e) {
+      print('Error fetching customers: $e');
       setState(() {
         customers = [];
         filteredCustomers = [];
@@ -79,6 +88,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         return name.contains(lowerQuery) || area.contains(lowerQuery);
       }).toList();
     });
+    print('Filtered customers: ${filteredCustomers.length} for query: $query');
   }
 
   Widget buildCustomerItem(Map<String, dynamic> customer) {
@@ -94,6 +104,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
             borderRadius: BorderRadius.circular(16),
             splashColor: Colors.white.withOpacity(0.3),
             onTap: () {
+              print(
+                  'Navigating to CustomerDetailScreen for userId: ${customer['id']}');
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -103,7 +115,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     area: customer['location'] ?? '-',
                     profileImageUrl: imageUrl,
                     shopImageUrl: customer['shop_image'] ?? '',
-                    userId: '',
+                    userId: customer['id'].toString(), // Pass correct userId
                   ),
                 ),
               );

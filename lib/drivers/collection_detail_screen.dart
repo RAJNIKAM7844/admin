@@ -32,8 +32,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    print(
-        'Initializing CollectionDetailsScreen with driverId: ${widget.driverId}, dateRange: ${widget.dateRange.start} to ${widget.dateRange.end}');
     fetchCollections();
   }
 
@@ -42,23 +40,34 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
       isLoading = true;
     });
     try {
-      print(
-          'Fetching collections for driver ID: ${widget.driverId}, Date range: ${widget.dateRange.start} to ${widget.dateRange.end}');
+      final driverResponse = await supabase
+          .from('drivers')
+          .select('area_id')
+          .eq('id', widget.driverId)
+          .limit(1)
+          .maybeSingle();
 
-      // Fetch users (without area filtering to simplify)
+      final areaId = driverResponse?['area_id'];
+      final areaResponse = await supabase
+          .from('delivery_areas')
+          .select('area_name')
+          .eq('id', areaId)
+          .limit(1)
+          .maybeSingle();
+
+      final areaName = areaResponse?['area_name'];
       final usersResponse = await supabase
           .from('users')
           .select('id, full_name')
+          .eq('location', areaName)
           .eq('role', 'customer');
-      print('Users response: $usersResponse');
 
+      final users = List<Map<String, dynamic>>.from(usersResponse);
       userIdToName.clear();
-      for (var user in usersResponse) {
+      for (var user in users) {
         userIdToName[user['id'].toString()] = user['full_name'];
       }
-      print('User ID to Name mapping: $userIdToName');
 
-      // Fetch transactions for the date range
       final startDate = widget.dateRange.start;
       final endDate = DateTime(
         widget.dateRange.end.year,
@@ -68,7 +77,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         59,
         59,
       );
-      print('Querying transactions from $startDate to $endDate');
 
       final transactionsResponse = await supabase
           .from('transactions')
@@ -76,7 +84,6 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
           .eq('driver_id', widget.driverId)
           .gte('date', startDate.toIso8601String())
           .lte('date', endDate.toIso8601String());
-      print('Transactions response: $transactionsResponse');
 
       double tempCreditTotal = 0.0;
       double tempPaidTotal = 0.0;
@@ -84,27 +91,23 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
 
       for (var transaction in transactionsResponse) {
         final userId = transaction['user_id'].toString();
-        final credit = (transaction['credit'] as num?)?.toDouble() ?? 0.0;
-        final paid = (transaction['paid'] as num?)?.toDouble() ?? 0.0;
-        final date = transaction['date'] != null
-            ? DateTime.parse(transaction['date']).toLocal()
-            : DateTime.now();
-        final modeOfPayment =
-            transaction['mode_of_payment']?.toString() ?? 'N/A';
+        if (userIdToName.containsKey(userId)) {
+          final credit = (transaction['credit'] as num).toDouble();
+          final paid = (transaction['paid'] as num).toDouble();
+          final date = DateTime.parse(transaction['date']);
+          final modeOfPayment =
+              transaction['mode_of_payment']?.toString() ?? 'N/A';
 
-        final userName = userIdToName[userId] ?? 'Customer $userId';
-        print(
-            'Processing transaction for user $userId ($userName): Credit $credit, Paid $paid');
-
-        tempCreditTotal += credit;
-        tempPaidTotal += paid;
-        tempTransactions.add({
-          'user_name': userName,
-          'credit': credit,
-          'paid': paid,
-          'date': date,
-          'mode_of_payment': modeOfPayment,
-        });
+          tempCreditTotal += credit;
+          tempPaidTotal += paid;
+          tempTransactions.add({
+            'user_name': userIdToName[userId],
+            'credit': credit,
+            'paid': paid,
+            'date': date,
+            'mode_of_payment': modeOfPayment,
+          });
+        }
       }
 
       setState(() {
@@ -113,20 +116,13 @@ class _CollectionDetailsScreenState extends State<CollectionDetailsScreen> {
         transactions = tempTransactions;
         isLoading = false;
       });
-      print('Transactions: $transactions');
-      print('Total Credit: $creditTotal, Total Paid: $paidTotal');
-    } catch (e, stackTrace) {
-      print('Error fetching collections: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
       setState(() {
         creditTotal = 0.0;
         paidTotal = 0.0;
         transactions = [];
         isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load collections: $e')),
-      );
     }
   }
 
